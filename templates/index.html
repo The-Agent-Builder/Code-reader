@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI 代码库领航员</title>
+    <link rel="stylesheet" href="/static/css/globals.css?v=1.1" />
+    <link rel="stylesheet" href="/static/css/components.css?v=1.1" />
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  </head>
+  <body class="min-h-screen w-full">
+    <!-- Top Navigation -->
+    <header
+      class="border-b border-border bg-background px-6 py-4 sticky top-0 z-50"
+    >
+      <div class="flex items-center justify-between w-full">
+        <!-- Left section - Brand and current page -->
+        <div class="flex items-center space-x-4">
+          <div class="flex items-center space-x-2">
+            <div
+              class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center"
+            >
+              <i
+                data-lucide="brain"
+                class="h-5 w-5 text-primary-foreground"
+              ></i>
+            </div>
+            <div>
+              <h1 class="text-lg font-medium text-foreground" id="pageTitle">
+                AI 代码库领航员
+              </h1>
+              <p
+                class="text-sm text-muted-foreground"
+                id="pageSubtitle"
+                style="display: none"
+              >
+                正在本地处理，您的代码安全无忧
+              </p>
+            </div>
+          </div>
+
+          <!-- Status indicators -->
+          <div
+            id="statusBadge"
+            class="badge badge-secondary animate-pulse"
+            style="display: none"
+          >
+            <div class="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
+            <span id="statusText">分析中</span>
+          </div>
+        </div>
+
+        <!-- Right section - Navigation actions -->
+        <div class="flex items-center space-x-3">
+          <!-- Home button -->
+          <button
+            id="homeBtn"
+            class="btn btn-ghost btn-sm"
+            style="display: none"
+            title="返回首页"
+          >
+            <i data-lucide="home" class="h-4 w-4"></i>
+          </button>
+
+          <!-- New analysis button -->
+          <button
+            id="newAnalysisBtn"
+            class="btn btn-outline btn-sm"
+            style="display: none"
+          >
+            <i data-lucide="upload" class="h-4 w-4 mr-2"></i>
+            新建分析
+          </button>
+
+          <!-- User Center -->
+          <div class="dropdown">
+            <button
+              class="btn btn-ghost btn-sm flex items-center space-x-2 px-3"
+              id="userMenuBtn"
+            >
+              <div class="avatar h-6 w-6">
+                <div
+                  class="avatar-fallback text-xs bg-primary text-primary-foreground"
+                >
+                  用
+                </div>
+              </div>
+              <span class="hidden md:inline text-sm">用户中心</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="h-[calc(100vh-73px)] w-full" id="mainContent">
+      <!-- Upload Page -->
+      <div
+        id="uploadPage"
+        class="h-full flex flex-col items-center justify-center p-8 bg-gradient-to-br from-blue-50 to-indigo-100"
+      >
+        <div class="max-w-2xl w-full space-y-8">
+          <div class="text-center space-y-4">
+            <p class="text-lg text-gray-600">
+              让 AI 帮您快速理解任何代码库的架构和逻辑
+            </p>
+
+            <!-- Platform Statistics -->
+            <div class="flex flex-wrap justify-center gap-6 mt-6">
+              <div class="stats-card">
+                <div class="flex items-center space-x-3">
+                  <div class="stats-icon blue">
+                    <i
+                      data-lucide="trending-up"
+                      class="h-5 w-5 text-blue-600"
+                    ></i>
+                  </div>
+                  <div class="text-left">
+                    <div class="stats-number blue" id="totalProjects">
+                      12.8K+
+                    </div>
+                    <div class="stats-label blue">已分析项目</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="stats-card green">
+                <div class="flex items-center space-x-3">
+                  <div class="stats-icon green">
+                    <i data-lucide="users" class="h-5 w-5 text-green-600"></i>
+                  </div>
+                  <div class="text-left">
+                    <div class="stats-number green">5K+</div>
+                    <div class="stats-label green">总用户</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Real-time activity indicator -->
+            <div class="flex justify-center mt-4">
+              <div
+                class="badge badge-secondary animate-pulse bg-blue-100 text-blue-700 border border-blue-200"
+              >
+                <div
+                  class="w-2 h-2 bg-blue-500 rounded-full mr-2 animate-ping"
+                ></div>
+                实时分析进行中
+              </div>
+            </div>
+          </div>
+
+          <!-- Upload Area -->
+          <div class="upload-area" id="uploadArea">
+            <!-- GitHub URL Input -->
+            <div class="mb-4">
+              <input
+                id="repoUrlInput"
+                type="url"
+                class="input w-full"
+                style="
+                  border-radius: 1rem;
+                  padding: 0.75rem 1rem;
+                  border: 2px solid #e5e7eb;
+                  background-color: #ffffff;
+                "
+                placeholder="输入 GitHub 仓库 URL (https://github.com/user/repository)"
+              />
+            </div>
+
+            <!-- File Upload Dropzone -->
+            <div
+              class="upload-dropzone"
+              id="uploadDropzone"
+              style="border: 2px dashed #e5e7eb; border-radius: 1rem"
+            >
+              <input
+                id="fileUpload"
+                type="file"
+                multiple
+                webkitdirectory
+                class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              />
+
+              <div class="space-y-4" id="uploadContent">
+                <i
+                  data-lucide="upload"
+                  class="mx-auto h-16 w-16 text-gray-400"
+                ></i>
+                <div class="text-center">
+                  <h3 class="text-lg font-medium text-gray-700">
+                    拖拽您的代码库文件夹到此处
+                  </h3>
+                  <p class="text-sm text-gray-500">或点击选择本地文件夹</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="flex justify-center space-x-4">
+            <button id="selectFolderBtn" class="btn btn-outline">
+              <i data-lucide="folder"></i>
+              选择本地文件夹
+            </button>
+
+            <button id="analyzeBtn" class="btn btn-primary px-8" disabled>
+              开始分析
+            </button>
+          </div>
+
+          <!-- Security Notice -->
+          <div class="text-center text-xs text-gray-500 mx-auto">
+            <div class="flex items-center justify-center space-x-2 mb-2">
+              <i data-lucide="shield" class="h-4 w-4 text-blue-500"></i>
+              <p class="whitespace-nowrap">
+                🔒 代码分析使用本地模型运行，不会出域，确保您的代码安全
+              </p>
+            </div>
+            <p class="text-xs text-gray-400 mt-2">
+              已有
+              <span class="text-blue-600 font-medium" id="totalProjectsFooter"
+                >12.8K</span
+              >
+              个项目通过我们的平台获得深度分析
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Analysis Progress Page -->
+      <div
+        id="analysisPage"
+        class="h-full flex flex-col items-center justify-center p-8 bg-gradient-to-br from-blue-50 to-indigo-100"
+        style="display: none"
+      >
+        <div class="max-w-md w-full space-y-8">
+          <!-- Analysis Configuration Card -->
+          <div class="card p-6">
+            <div class="space-y-4">
+              <div class="flex items-center space-x-3">
+                <div class="p-2 bg-blue-100 rounded-lg">
+                  <i data-lucide="brain" class="h-5 w-5 text-blue-600"></i>
+                </div>
+                <div>
+                  <h3 class="font-medium text-gray-900">分析配置</h3>
+                  <p class="text-sm text-gray-600" id="analysisMode">
+                    代码整体分析
+                  </p>
+                </div>
+              </div>
+
+              <div class="space-y-2">
+                <div class="flex justify-between text-sm">
+                  <span class="text-gray-600">分析模式</span>
+                  <span class="font-medium" id="analysisModeDetail"
+                    >整体架构</span
+                  >
+                </div>
+                <div class="flex justify-between text-sm">
+                  <span class="text-gray-600">文件数量</span>
+                  <span class="font-medium" id="fileCount">0 个</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Queue Status Card -->
+          <div class="card p-6">
+            <div class="space-y-4">
+              <div class="flex items-center space-x-3">
+                <div class="p-2 bg-orange-100 rounded-lg">
+                  <i data-lucide="clock" class="h-5 w-5 text-orange-600"></i>
+                </div>
+                <div>
+                  <h3 class="font-medium text-gray-900">分析队列状态</h3>
+                  <p class="text-sm text-gray-600">当前系统较为繁忙</p>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-3 gap-4 text-center">
+                <div class="space-y-1">
+                  <div
+                    class="text-2xl font-bold text-blue-600"
+                    id="queuePosition"
+                  >
+                    #3
+                  </div>
+                  <div class="text-xs text-gray-500">队列位置</div>
+                </div>
+                <div class="space-y-1">
+                  <div
+                    class="text-2xl font-bold text-green-600"
+                    id="estimatedTime"
+                  >
+                    25分
+                  </div>
+                  <div class="text-xs text-gray-500">预估时间</div>
+                </div>
+                <div class="space-y-1">
+                  <div
+                    class="text-2xl font-bold text-purple-600"
+                    id="totalInQueue"
+                  >
+                    18
+                  </div>
+                  <div class="text-xs text-gray-500">排队人数</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Progress Section -->
+          <div class="text-center space-y-6">
+            <div class="progress-container">
+              <div class="progress h-2 mb-4">
+                <div
+                  class="progress-bar"
+                  id="progressBar"
+                  style="width: 0%"
+                ></div>
+              </div>
+
+              <div class="space-y-4" id="analysisSteps">
+                <!-- Analysis steps will be populated by JavaScript -->
+              </div>
+            </div>
+
+            <!-- Email Notification -->
+            <div id="emailSection" class="space-y-4">
+              <button id="emailNotifyBtn" class="btn btn-outline w-full">
+                <i data-lucide="mail" class="h-4 w-4 mr-2"></i>
+                留下邮箱，完成后通知我
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Background Mode Page -->
+      <div
+        id="backgroundPage"
+        class="h-full flex flex-col items-center justify-center p-8 bg-gradient-to-br from-blue-50 to-indigo-100"
+        style="display: none"
+      >
+        <div class="max-w-md w-full text-center space-y-6">
+          <div class="space-y-4">
+            <div
+              class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto"
+            >
+              <i data-lucide="check" class="w-8 h-8 text-blue-600"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-900">分析正在后台进行</h2>
+            <p class="text-gray-600">
+              我们会在分析完成后通过邮箱通知您。您现在可以安全地关闭此页面。
+            </p>
+          </div>
+
+          <div class="space-y-3">
+            <button id="simulateCompleteBtn" class="btn btn-primary w-full">
+              模拟分析完成（演示用）
+            </button>
+
+            <button id="backToUploadBtn" class="btn btn-outline w-full">
+              返回首页
+            </button>
+          </div>
+
+          <div class="text-xs text-gray-500">
+            <p>采用本地AI模型分析，数据不出域，安全无忧</p>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Scripts -->
+    <script src="/static/js/app.js"></script>
+    <script>
+      // Initialize Lucide icons
+      lucide.createIcons();
+
+      // Initialize app when DOM is loaded
+      document.addEventListener("DOMContentLoaded", function () {
+        if (window.AppManager) {
+          window.AppManager.init();
+        }
+      });
+    </script>
+  </body>
+</html>

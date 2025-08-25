@@ -1,0 +1,480 @@
+{% extends "base.html" %}
+
+{% block title %}分析结果 - GitHub 代码仓库解析工具{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- Loading State -->
+    <div id="loadingState" class="text-center py-5">
+        <div class="loading-spinner mx-auto mb-3" style="width: 3rem; height: 3rem;"></div>
+        <h5>加载分析结果中...</h5>
+    </div>
+
+    <!-- Error State -->
+    <div id="errorState" class="alert alert-danger" style="display: none;">
+        <h5><i class="fas fa-exclamation-triangle me-2"></i>加载失败</h5>
+        <p id="errorMessage"></p>
+        <a href="/" class="btn btn-primary">返回首页</a>
+    </div>
+
+    <!-- Results Content -->
+    <div id="resultsContent" style="display: none;">
+        <!-- Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h1 id="repoTitle">
+                            <i class="fab fa-github me-2"></i>
+                            <span id="repoName"></span>
+                        </h1>
+                        <p class="text-muted mb-0" id="repoDescription"></p>
+                    </div>
+                    <div class="text-end">
+                        <button class="btn btn-outline-primary me-2" onclick="downloadResults()">
+                            <i class="fas fa-download me-1"></i>下载结果
+                        </button>
+                        <a href="/" class="btn btn-primary">
+                            <i class="fas fa-plus me-1"></i>新建分析
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Repository Info -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-info-circle me-2"></i>
+                            仓库信息
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <table class="table table-sm">
+                                    <tr>
+                                        <td><strong>主要语言:</strong></td>
+                                        <td id="mainLanguage"></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Stars:</strong></td>
+                                        <td id="stars"></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Forks:</strong></td>
+                                        <td id="forks"></td>
+                                    </tr>
+                                </table>
+                            </div>
+                            <div class="col-md-6">
+                                <table class="table table-sm">
+                                    <tr>
+                                        <td><strong>创建时间:</strong></td>
+                                        <td id="createdAt"></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>更新时间:</strong></td>
+                                        <td id="updatedAt"></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>分析时间:</strong></td>
+                                        <td id="analysisTime"></td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <!-- Language Distribution -->
+                        <div class="mt-3">
+                            <h6>语言分布</h6>
+                            <div id="languageChart" class="mb-3"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Statistics -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h3 class="text-primary" id="totalFiles">0</h3>
+                        <p class="mb-0">分析文件</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h3 class="text-success" id="totalFunctions">0</h3>
+                        <p class="mb-0">函数</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h3 class="text-info" id="totalClasses">0</h3>
+                        <p class="mb-0">类</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search and Filter -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <input type="text" class="form-control" id="searchInput" 
+                                       placeholder="搜索函数或类名...">
+                            </div>
+                            <div class="col-md-3">
+                                <select class="form-select" id="typeFilter">
+                                    <option value="all">所有类型</option>
+                                    <option value="function">函数</option>
+                                    <option value="class">类</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <select class="form-select" id="languageFilter">
+                                    <option value="all">所有语言</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Code Analysis Results -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-code me-2"></i>
+                            代码分析结果
+                        </h5>
+                        <div>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="expandAll()">
+                                <i class="fas fa-expand-alt me-1"></i>展开全部
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="collapseAll()">
+                                <i class="fas fa-compress-alt me-1"></i>收起全部
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="codeAnalysisResults">
+                            <!-- Results will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let analysisData = null;
+let filteredResults = [];
+
+// 从URL获取分析ID
+const pathParts = window.location.pathname.split('/');
+const analysisId = pathParts[pathParts.length - 2]; // /analysis/{id}/result
+
+// 页面加载时获取分析结果
+document.addEventListener('DOMContentLoaded', function() {
+    loadAnalysisResult();
+});
+
+async function loadAnalysisResult() {
+    try {
+        const response = await fetch(`/api/analysis/${analysisId}/result`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        analysisData = await response.json();
+        displayResults();
+        
+    } catch (error) {
+        console.error('Error loading analysis result:', error);
+        showError('加载分析结果失败: ' + error.message);
+    }
+}
+
+function showError(message) {
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('errorState').style.display = 'block';
+    document.getElementById('errorMessage').textContent = message;
+}
+
+function displayResults() {
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('resultsContent').style.display = 'block';
+    
+    const repoInfo = analysisData.repo_info;
+    const codeAnalysis = analysisData.code_analysis;
+    
+    // 显示仓库基本信息
+    document.getElementById('repoName').textContent = repoInfo.full_name;
+    document.getElementById('repoDescription').textContent = repoInfo.description || '无描述';
+    document.getElementById('mainLanguage').textContent = repoInfo.language || 'Unknown';
+    document.getElementById('stars').textContent = repoInfo.stars.toLocaleString();
+    document.getElementById('forks').textContent = repoInfo.forks.toLocaleString();
+    document.getElementById('createdAt').textContent = formatTime(repoInfo.created_at);
+    document.getElementById('updatedAt').textContent = formatTime(repoInfo.updated_at);
+    document.getElementById('analysisTime').textContent = formatTime(analysisData.analysis_time);
+    
+    // 显示统计信息
+    const totalFunctions = codeAnalysis.reduce((sum, file) => sum + file.functions.length, 0);
+    const totalClasses = codeAnalysis.reduce((sum, file) => sum + file.classes.length, 0);
+    
+    document.getElementById('totalFiles').textContent = codeAnalysis.length;
+    document.getElementById('totalFunctions').textContent = totalFunctions;
+    document.getElementById('totalClasses').textContent = totalClasses;
+    
+    // 显示语言分布
+    displayLanguageDistribution(repoInfo.languages);
+    
+    // 填充语言过滤器
+    populateLanguageFilter(repoInfo.languages);
+    
+    // 显示代码分析结果
+    filteredResults = flattenCodeAnalysis(codeAnalysis);
+    displayCodeAnalysis(filteredResults);
+    
+    // 绑定搜索和过滤事件
+    bindFilterEvents();
+}
+
+function displayLanguageDistribution(languages) {
+    const container = document.getElementById('languageChart');
+    const total = Object.values(languages).reduce((sum, bytes) => sum + bytes, 0);
+    
+    let html = '<div class="progress" style="height: 20px;">';
+    let position = 0;
+    
+    const colors = ['#007bff', '#28a745', '#ffc107', '#dc3545', '#6f42c1', '#fd7e14'];
+    let colorIndex = 0;
+    
+    for (const [lang, bytes] of Object.entries(languages)) {
+        const percentage = (bytes / total) * 100;
+        const color = colors[colorIndex % colors.length];
+        
+        html += `<div class="progress-bar" style="width: ${percentage}%; background-color: ${color};" 
+                      title="${lang}: ${percentage.toFixed(1)}%"></div>`;
+        colorIndex++;
+    }
+    
+    html += '</div><div class="mt-2">';
+    colorIndex = 0;
+    
+    for (const [lang, bytes] of Object.entries(languages)) {
+        const percentage = (bytes / total) * 100;
+        const color = colors[colorIndex % colors.length];
+        
+        html += `<span class="badge me-2 mb-1" style="background-color: ${color};">
+                    ${lang}: ${percentage.toFixed(1)}%
+                 </span>`;
+        colorIndex++;
+    }
+    
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function populateLanguageFilter(languages) {
+    const select = document.getElementById('languageFilter');
+    
+    for (const lang of Object.keys(languages)) {
+        const option = document.createElement('option');
+        option.value = lang;
+        option.textContent = lang;
+        select.appendChild(option);
+    }
+}
+
+function flattenCodeAnalysis(codeAnalysis) {
+    const results = [];
+    
+    for (const file of codeAnalysis) {
+        // 添加函数
+        for (const func of file.functions) {
+            results.push({
+                ...func,
+                type: 'function',
+                file_path: file.file_path
+            });
+        }
+        
+        // 添加类
+        for (const cls of file.classes) {
+            results.push({
+                ...cls,
+                type: 'class',
+                file_path: file.file_path
+            });
+        }
+    }
+    
+    return results;
+}
+
+function displayCodeAnalysis(results) {
+    const container = document.getElementById('codeAnalysisResults');
+    
+    if (results.length === 0) {
+        container.innerHTML = '<p class="text-muted text-center py-4">没有找到匹配的结果</p>';
+        return;
+    }
+    
+    let html = '';
+    
+    for (let i = 0; i < results.length; i++) {
+        const item = results[i];
+        const elementId = `element_${i}`;
+        const codeId = `code_${i}`;
+        
+        html += `
+            <div class="search-result-item mb-3">
+                <div class="search-result-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1">
+                                <span class="badge element-badge ${item.type === 'function' ? 'bg-success' : 'bg-info'} me-2">
+                                    ${item.type === 'function' ? '函数' : '类'}
+                                </span>
+                                ${item.title}
+                            </h6>
+                            <small class="text-muted">
+                                <i class="fas fa-file me-1"></i>${item.file_path}
+                                <i class="fas fa-map-marker-alt ms-2 me-1"></i>${item.source}
+                                <span class="badge bg-secondary ms-2">${item.language}</span>
+                            </small>
+                        </div>
+                        <div>
+                            <button class="btn btn-sm btn-outline-secondary me-1" 
+                                    onclick="toggleCode(this, '${codeId}')">
+                                <i class="fas fa-chevron-down"></i> 显示代码
+                            </button>
+                            <button class="btn btn-sm btn-outline-primary copy-btn" 
+                                    onclick="copyCode(this, \`${item.code.replace(/`/g, '\\`')}\`)">
+                                <i class="fas fa-copy"></i> 复制
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="search-result-content">
+                    <p class="mb-2">${item.description}</p>
+                    <div id="${codeId}" style="display: none;">
+                        <div class="code-container">
+                            <pre class="line-numbers"><code class="language-${item.language}">${escapeHtml(item.code)}</code></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    container.innerHTML = html;
+    
+    // 重新初始化语法高亮
+    Prism.highlightAll();
+}
+
+function bindFilterEvents() {
+    const searchInput = document.getElementById('searchInput');
+    const typeFilter = document.getElementById('typeFilter');
+    const languageFilter = document.getElementById('languageFilter');
+    
+    function applyFilters() {
+        const searchTerm = searchInput.value.toLowerCase();
+        const typeFilter_value = typeFilter.value;
+        const languageFilter_value = languageFilter.value;
+        
+        let filtered = filteredResults;
+        
+        // 搜索过滤
+        if (searchTerm) {
+            filtered = filtered.filter(item => 
+                item.title.toLowerCase().includes(searchTerm) ||
+                item.description.toLowerCase().includes(searchTerm) ||
+                item.file_path.toLowerCase().includes(searchTerm)
+            );
+        }
+        
+        // 类型过滤
+        if (typeFilter_value !== 'all') {
+            filtered = filtered.filter(item => item.type === typeFilter_value);
+        }
+        
+        // 语言过滤
+        if (languageFilter_value !== 'all') {
+            filtered = filtered.filter(item => item.language === languageFilter_value);
+        }
+        
+        displayCodeAnalysis(filtered);
+    }
+    
+    searchInput.addEventListener('input', applyFilters);
+    typeFilter.addEventListener('change', applyFilters);
+    languageFilter.addEventListener('change', applyFilters);
+}
+
+function expandAll() {
+    const codeElements = document.querySelectorAll('[id^="code_"]');
+    codeElements.forEach(element => {
+        element.style.display = 'block';
+    });
+    
+    const buttons = document.querySelectorAll('button[onclick^="toggleCode"]');
+    buttons.forEach(button => {
+        button.innerHTML = '<i class="fas fa-chevron-up"></i> 隐藏代码';
+    });
+}
+
+function collapseAll() {
+    const codeElements = document.querySelectorAll('[id^="code_"]');
+    codeElements.forEach(element => {
+        element.style.display = 'none';
+    });
+    
+    const buttons = document.querySelectorAll('button[onclick^="toggleCode"]');
+    buttons.forEach(button => {
+        button.innerHTML = '<i class="fas fa-chevron-down"></i> 显示代码';
+    });
+}
+
+function downloadResults() {
+    const dataStr = JSON.stringify(analysisData, null, 2);
+    const dataBlob = new Blob([dataStr], {type: 'application/json'});
+    const url = URL.createObjectURL(dataBlob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `analysis_${analysisId}.json`;
+    link.click();
+    
+    URL.revokeObjectURL(url);
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

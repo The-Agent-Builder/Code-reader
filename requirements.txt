@@ -1,0 +1,12 @@
+pocketflow
+fastapi
+uvicorn[standard]
+python-dotenv
+requests
+aiohttp
+gitpython
+jinja2
+langchain
+langchain-community
+langchain-openai
+chromadb
