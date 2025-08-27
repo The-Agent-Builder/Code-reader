@@ -17,16 +17,27 @@ class FileAnalysisService:
     """文件分析服务类"""
 
     @staticmethod
-    def get_files_by_task_id(task_id: str, db: Session = None) -> dict:
+    def get_files_by_task_id(
+        task_id: int,
+        db: Session = None,
+        language: str = None,
+        analysis_version: str = None,
+        status: str = None,
+        include_code_content: bool = False,
+    ) -> dict:
         """
         根据task_id获取文件列表
 
         Args:
             task_id: 任务ID
             db: 数据库会话（可选）
+            language: 编程语言过滤器（可选）
+            analysis_version: 分析版本过滤器（可选）
+            status: 状态过滤器（可选）
+            include_code_content: 是否返回代码内容（可选，默认False）
 
         Returns:
-            dict: 包含文件列表和统计信息的字典
+            dict: 包含文件列表的字典
         """
         # 如果没有传入数据库会话，创建新的会话
         if db is None:
@@ -36,10 +47,19 @@ class FileAnalysisService:
             should_close = False
 
         try:
-            # 查询指定task_id的所有文件分析记录
-            files = (
-                db.query(FileAnalysis).filter(FileAnalysis.task_id == task_id).order_by(FileAnalysis.file_path).all()
-            )
+            # 构建查询条件
+            query = db.query(FileAnalysis).filter(FileAnalysis.task_id == task_id)
+
+            # 添加过滤条件
+            if language:
+                query = query.filter(FileAnalysis.language == language)
+            if analysis_version:
+                query = query.filter(FileAnalysis.analysis_version == analysis_version)
+            if status:
+                query = query.filter(FileAnalysis.status == status)
+
+            # 执行查询并排序
+            files = query.order_by(FileAnalysis.file_path).all()
 
             if not files:
                 return {
@@ -48,14 +68,10 @@ class FileAnalysisService:
                     "task_id": task_id,
                     "total_files": 0,
                     "files": [],
-                    "statistics": {"by_language": {}, "by_status": {}, "by_file_type": {}, "total_size": 0},
                 }
 
             # 转换为字典格式
-            file_list = [file.to_dict() for file in files]
-
-            # 统计信息
-            statistics = FileAnalysisService._calculate_statistics(files)
+            file_list = [file.to_dict(include_code_content=include_code_content) for file in files]
 
             logger.info(f"成功获取task_id {task_id} 的文件列表，共 {len(files)} 个文件")
 
@@ -65,7 +81,6 @@ class FileAnalysisService:
                 "task_id": task_id,
                 "total_files": len(files),
                 "files": file_list,
-                "statistics": statistics,
             }
 
         except SQLAlchemyError as e:
@@ -74,6 +89,74 @@ class FileAnalysisService:
         except Exception as e:
             logger.error(f"获取文件列表时发生未知错误: {str(e)}")
             return {"status": "error", "message": "获取文件列表时发生未知错误", "task_id": task_id, "error": str(e)}
+        finally:
+            if should_close:
+                db.close()
+
+    @staticmethod
+    def get_file_analysis_by_id_and_task_id(file_id: int, task_id: int, db: Session = None) -> dict:
+        """
+        根据文件分析ID和任务ID获取单条文件分析记录
+
+        Args:
+            file_id: 文件分析记录ID
+            task_id: 任务ID
+            db: 数据库会话（可选）
+
+        Returns:
+            dict: 包含完整文件分析记录的字典
+        """
+        should_close = False
+        if db is None:
+            db = next(get_db())
+            should_close = True
+
+        try:
+            # 查询指定ID和任务ID的文件分析记录
+            file_analysis = (
+                db.query(FileAnalysis).filter(FileAnalysis.id == file_id, FileAnalysis.task_id == task_id).first()
+            )
+
+            if not file_analysis:
+                return {
+                    "status": "success",
+                    "message": f"未找到ID为 {file_id} 且任务ID为 {task_id} 的文件分析记录",
+                    "file_id": file_id,
+                    "task_id": task_id,
+                    "file_analysis": None,
+                }
+
+            # 转换为字典格式，包含所有字段（包括代码内容）
+            file_data = file_analysis.to_dict(include_code_content=True)
+
+            logger.info(f"成功获取文件分析记录 ID: {file_id}, 任务ID: {task_id}")
+
+            return {
+                "status": "success",
+                "message": "文件分析记录获取成功",
+                "file_id": file_id,
+                "task_id": task_id,
+                "file_analysis": file_data,
+            }
+
+        except SQLAlchemyError as e:
+            logger.error(f"数据库查询失败: {str(e)}")
+            return {
+                "status": "error",
+                "message": "数据库查询失败",
+                "file_id": file_id,
+                "task_id": task_id,
+                "error": str(e),
+            }
+        except Exception as e:
+            logger.error(f"获取文件分析记录时发生未知错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "获取文件分析记录时发生未知错误",
+                "file_id": file_id,
+                "task_id": task_id,
+                "error": str(e),
+            }
         finally:
             if should_close:
                 db.close()
@@ -112,21 +195,244 @@ class FileAnalysisService:
 
         return statistics
 
+    @staticmethod
+    def create_file_analysis(file_data: dict, db: Session = None) -> dict:
+        """
+        创建新的文件分析记录
+
+        Args:
+            file_data: 文件分析数据字典
+            db: 数据库会话（可选）
+
+        Returns:
+            dict: 包含创建结果的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            # 验证task_id是否存在
+            task = db.query(AnalysisTask).filter(AnalysisTask.id == file_data["task_id"]).first()
+            if not task:
+                return {
+                    "status": "error",
+                    "message": f"分析任务ID {file_data['task_id']} 不存在",
+                    "task_id": file_data["task_id"],
+                }
+
+            # 创建新文件分析记录
+            new_file_analysis = FileAnalysis(
+                task_id=file_data["task_id"],
+                file_path=file_data["file_path"],
+                language=file_data.get("language"),
+                analysis_version=file_data.get("analysis_version", "1.0"),
+                status=file_data.get("status", "pending"),
+                code_lines=file_data.get("code_lines", 0),
+                code_content=file_data.get("code_content"),
+                file_analysis=file_data.get("file_analysis"),
+                dependencies=file_data.get("dependencies"),
+                error_message=file_data.get("error_message"),
+            )
+
+            db.add(new_file_analysis)
+            db.commit()
+            db.refresh(new_file_analysis)
+
+            logger.info(f"成功创建文件分析记录: ID {new_file_analysis.id}, 任务ID {new_file_analysis.task_id}")
+
+            return {
+                "status": "success",
+                "message": "文件分析记录创建成功",
+                "file_analysis": new_file_analysis.to_dict(include_code_content=True),
+            }
+
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error(f"数据库操作失败: {str(e)}")
+            return {
+                "status": "error",
+                "message": "数据库操作失败",
+                "error": str(e),
+            }
+        except Exception as e:
+            db.rollback()
+            logger.error(f"创建文件分析记录时发生未知错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "创建文件分析记录时发生未知错误",
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
+
+    @staticmethod
+    def update_file_analysis(file_id: int, update_data: dict, db: Session = None) -> dict:
+        """
+        更新文件分析记录信息
+
+        Args:
+            file_id: 文件分析ID
+            update_data: 更新数据字典
+            db: 数据库会话（可选）
+
+        Returns:
+            dict: 包含更新结果的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            # 查询要更新的文件分析记录
+            file_analysis = db.query(FileAnalysis).filter(FileAnalysis.id == file_id).first()
+
+            if not file_analysis:
+                return {
+                    "status": "error",
+                    "message": f"未找到ID为 {file_id} 的文件分析记录",
+                    "file_id": file_id,
+                }
+
+            # 如果要更新task_id，检查是否存在
+            if "task_id" in update_data:
+                task = db.query(AnalysisTask).filter(AnalysisTask.id == update_data["task_id"]).first()
+                if not task:
+                    return {
+                        "status": "error",
+                        "message": f"分析任务ID {update_data['task_id']} 不存在",
+                        "task_id": update_data["task_id"],
+                    }
+
+            # 更新字段
+            for field, value in update_data.items():
+                if hasattr(file_analysis, field):
+                    setattr(file_analysis, field, value)
+
+            db.commit()
+            db.refresh(file_analysis)
+
+            logger.info(f"成功更新文件分析记录ID {file_id} 的信息")
+
+            return {
+                "status": "success",
+                "message": "文件分析记录信息更新成功",
+                "file_analysis": file_analysis.to_dict(include_code_content=True),
+            }
+
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error(f"数据库操作失败: {str(e)}")
+            return {
+                "status": "error",
+                "message": "数据库操作失败",
+                "file_id": file_id,
+                "error": str(e),
+            }
+        except Exception as e:
+            db.rollback()
+            logger.error(f"更新文件分析记录时发生未知错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "更新文件分析记录时发生未知错误",
+                "file_id": file_id,
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
+
+    @staticmethod
+    def delete_file_analysis(file_id: int, db: Session = None) -> dict:
+        """
+        删除文件分析记录（硬删除，会级联删除相关的分析项记录）
+
+        Args:
+            file_id: 文件分析ID
+            db: 数据库会话（可选）
+
+        Returns:
+            dict: 包含删除结果的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            # 查询要删除的文件分析记录
+            file_analysis = db.query(FileAnalysis).filter(FileAnalysis.id == file_id).first()
+
+            if not file_analysis:
+                return {
+                    "status": "error",
+                    "message": f"未找到ID为 {file_id} 的文件分析记录",
+                    "file_id": file_id,
+                }
+
+            # 保存文件分析数据用于返回
+            file_data = file_analysis.to_dict(include_code_content=True)
+
+            # 物理删除记录（会级联删除相关的分析项记录）
+            db.delete(file_analysis)
+            db.commit()
+
+            logger.info(f"成功删除文件分析记录ID {file_id}")
+
+            return {
+                "status": "success",
+                "message": "文件分析记录已删除",
+                "file_id": file_id,
+                "deleted_file_analysis": file_data,
+            }
+
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error(f"数据库操作失败: {str(e)}")
+            return {
+                "status": "error",
+                "message": "数据库操作失败",
+                "file_id": file_id,
+                "error": str(e),
+            }
+        except Exception as e:
+            db.rollback()
+            logger.error(f"删除文件分析记录时发生未知错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "删除文件分析记录时发生未知错误",
+                "file_id": file_id,
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
+
 
 class AnalysisItemService:
     """分析项服务类"""
 
     @staticmethod
-    def get_analysis_items_by_file_id(file_analysis_id: int, db: Session = None) -> dict:
+    def get_analysis_items_by_file_id(
+        file_analysis_id: int, db: Session = None, target_type: str = None, language: str = None
+    ) -> dict:
         """
         根据file_analysis_id获取分析项列表
 
         Args:
             file_analysis_id: 文件分析ID
             db: 数据库会话（可选）
+            target_type: 目标类型过滤器（可选）
+            language: 编程语言过滤器（可选）
 
         Returns:
-            dict: 包含分析项列表和统计信息的字典
+            dict: 包含分析项列表的字典，按start_line升序排序
         """
         # 如果没有传入数据库会话，创建新的会话
         if db is None:
@@ -136,13 +442,17 @@ class AnalysisItemService:
             should_close = False
 
         try:
-            # 查询指定file_analysis_id的所有分析项记录
-            items = (
-                db.query(AnalysisItem)
-                .filter(AnalysisItem.file_analysis_id == file_analysis_id)
-                .order_by(AnalysisItem.start_line, AnalysisItem.created_at)
-                .all()
-            )
+            # 构建查询条件
+            query = db.query(AnalysisItem).filter(AnalysisItem.file_analysis_id == file_analysis_id)
+
+            # 添加过滤条件
+            if target_type:
+                query = query.filter(AnalysisItem.target_type == target_type)
+            if language:
+                query = query.filter(AnalysisItem.language == language)
+
+            # 执行查询并按start_line升序排序
+            items = query.order_by(AnalysisItem.start_line.asc(), AnalysisItem.created_at).all()
 
             if not items:
                 return {
@@ -151,20 +461,10 @@ class AnalysisItemService:
                     "file_analysis_id": file_analysis_id,
                     "total_items": 0,
                     "items": [],
-                    "statistics": {
-                        "by_language": {},
-                        "by_search_target": {},
-                        "total_code_lines": 0,
-                        "has_code_items": 0,
-                        "has_description_items": 0,
-                    },
                 }
 
             # 转换为字典格式
             item_list = [item.to_dict() for item in items]
-
-            # 统计信息
-            statistics = AnalysisItemService._calculate_item_statistics(items)
 
             logger.info(f"成功获取file_analysis_id {file_analysis_id} 的分析项列表，共 {len(items)} 个项目")
 
@@ -174,7 +474,6 @@ class AnalysisItemService:
                 "file_analysis_id": file_analysis_id,
                 "total_items": len(items),
                 "items": item_list,
-                "statistics": statistics,
             }
 
         except SQLAlchemyError as e:
@@ -239,6 +538,227 @@ class AnalysisItemService:
                 statistics["has_description_items"] += 1
 
         return statistics
+
+    @staticmethod
+    def create_analysis_item(item_data: dict, db: Session = None) -> dict:
+        """
+        创建新的分析项记录
+
+        Args:
+            item_data: 分析项数据字典
+            db: 数据库会话（可选）
+
+        Returns:
+            dict: 包含创建结果的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            # 验证file_analysis_id是否存在
+            file_analysis = db.query(FileAnalysis).filter(FileAnalysis.id == item_data["file_analysis_id"]).first()
+            if not file_analysis:
+                return {
+                    "status": "error",
+                    "message": f"文件分析ID {item_data['file_analysis_id']} 不存在",
+                    "file_analysis_id": item_data["file_analysis_id"],
+                }
+
+            # 创建新分析项记录
+            new_item = AnalysisItem(
+                file_analysis_id=item_data["file_analysis_id"],
+                title=item_data["title"],
+                description=item_data.get("description"),
+                target_type=item_data.get("target_type"),
+                target_name=item_data.get("target_name"),
+                source=item_data.get("source"),
+                language=item_data.get("language"),
+                code=item_data.get("code"),
+                start_line=item_data.get("start_line"),
+                end_line=item_data.get("end_line"),
+            )
+
+            db.add(new_item)
+            db.commit()
+            db.refresh(new_item)
+
+            logger.info(f"成功创建分析项记录: ID {new_item.id}, 文件分析ID {new_item.file_analysis_id}")
+
+            return {
+                "status": "success",
+                "message": "分析项记录创建成功",
+                "analysis_item": new_item.to_dict(),
+            }
+
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error(f"数据库操作失败: {str(e)}")
+            return {
+                "status": "error",
+                "message": "数据库操作失败",
+                "error": str(e),
+            }
+        except Exception as e:
+            db.rollback()
+            logger.error(f"创建分析项记录时发生未知错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "创建分析项记录时发生未知错误",
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
+
+    @staticmethod
+    def update_analysis_item(item_id: int, update_data: dict, db: Session = None) -> dict:
+        """
+        更新分析项记录信息
+
+        Args:
+            item_id: 分析项ID
+            update_data: 更新数据字典
+            db: 数据库会话（可选）
+
+        Returns:
+            dict: 包含更新结果的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            # 查询要更新的分析项记录
+            item = db.query(AnalysisItem).filter(AnalysisItem.id == item_id).first()
+
+            if not item:
+                return {
+                    "status": "error",
+                    "message": f"未找到ID为 {item_id} 的分析项记录",
+                    "item_id": item_id,
+                }
+
+            # 如果要更新file_analysis_id，检查是否存在
+            if "file_analysis_id" in update_data:
+                file_analysis = (
+                    db.query(FileAnalysis).filter(FileAnalysis.id == update_data["file_analysis_id"]).first()
+                )
+                if not file_analysis:
+                    return {
+                        "status": "error",
+                        "message": f"文件分析ID {update_data['file_analysis_id']} 不存在",
+                        "file_analysis_id": update_data["file_analysis_id"],
+                    }
+
+            # 更新字段
+            for field, value in update_data.items():
+                if hasattr(item, field):
+                    setattr(item, field, value)
+
+            db.commit()
+            db.refresh(item)
+
+            logger.info(f"成功更新分析项记录ID {item_id} 的信息")
+
+            return {
+                "status": "success",
+                "message": "分析项记录信息更新成功",
+                "analysis_item": item.to_dict(),
+            }
+
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error(f"数据库操作失败: {str(e)}")
+            return {
+                "status": "error",
+                "message": "数据库操作失败",
+                "item_id": item_id,
+                "error": str(e),
+            }
+        except Exception as e:
+            db.rollback()
+            logger.error(f"更新分析项记录时发生未知错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "更新分析项记录时发生未知错误",
+                "item_id": item_id,
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
+
+    @staticmethod
+    def delete_analysis_item(item_id: int, db: Session = None) -> dict:
+        """
+        删除分析项记录（硬删除）
+
+        Args:
+            item_id: 分析项ID
+            db: 数据库会话（可选）
+
+        Returns:
+            dict: 包含删除结果的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            # 查询要删除的分析项记录
+            item = db.query(AnalysisItem).filter(AnalysisItem.id == item_id).first()
+
+            if not item:
+                return {
+                    "status": "error",
+                    "message": f"未找到ID为 {item_id} 的分析项记录",
+                    "item_id": item_id,
+                }
+
+            # 保存分析项数据用于返回
+            item_data = item.to_dict()
+
+            # 物理删除记录
+            db.delete(item)
+            db.commit()
+
+            logger.info(f"成功删除分析项记录ID {item_id}")
+
+            return {
+                "status": "success",
+                "message": "分析项记录已删除",
+                "item_id": item_id,
+                "deleted_analysis_item": item_data,
+            }
+
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error(f"数据库操作失败: {str(e)}")
+            return {
+                "status": "error",
+                "message": "数据库操作失败",
+                "item_id": item_id,
+                "error": str(e),
+            }
+        except Exception as e:
+            db.rollback()
+            logger.error(f"删除分析项记录时发生未知错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "删除分析项记录时发生未知错误",
+                "item_id": item_id,
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
 
 
 class RepositoryService:
@@ -403,6 +923,149 @@ class RepositoryService:
                 db.close()
 
     @staticmethod
+    def get_repository_by_id(repository_id: int, db: Session = None, include_tasks: bool = True) -> dict:
+        """
+        根据仓库ID获取仓库信息
+
+        Args:
+            repository_id: 仓库ID
+            db: 数据库会话（可选）
+            include_tasks: 是否包含分析任务信息
+
+        Returns:
+            dict: 包含仓库信息的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            # 查询指定ID的仓库记录
+            repository = db.query(Repository).filter(Repository.id == repository_id).first()
+
+            # 如果需要包含任务信息，手动查询任务
+            if include_tasks and repository:
+                tasks = (
+                    db.query(AnalysisTask)
+                    .filter(AnalysisTask.repository_id == repository.id)
+                    .order_by(AnalysisTask.start_time.desc())
+                    .all()
+                )
+                # 手动设置任务列表
+                repository.analysis_tasks = tasks
+
+            if not repository:
+                return {
+                    "status": "success",
+                    "message": f"未找到ID为 {repository_id} 的仓库记录",
+                    "repository_id": repository_id,
+                    "repository": None,
+                }
+
+            logger.info(f"成功获取仓库ID {repository_id} 的信息")
+
+            return {
+                "status": "success",
+                "message": "仓库信息获取成功",
+                "repository_id": repository_id,
+                "repository": repository.to_dict(include_tasks=include_tasks),
+            }
+
+        except SQLAlchemyError as e:
+            logger.error(f"数据库查询失败: {str(e)}")
+            return {
+                "status": "error",
+                "message": "数据库查询失败",
+                "repository_id": repository_id,
+                "error": str(e),
+            }
+        except Exception as e:
+            logger.error(f"获取仓库信息时发生未知错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "获取仓库信息时发生未知错误",
+                "repository_id": repository_id,
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
+
+    @staticmethod
+    def create_repository(repository_data: dict, db: Session = None) -> dict:
+        """
+        创建新仓库
+
+        Args:
+            repository_data: 仓库数据字典
+            db: 数据库会话（可选）
+
+        Returns:
+            dict: 包含创建结果的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            # 检查是否已存在相同local_path的仓库
+            existing_repo = (
+                db.query(Repository).filter(Repository.local_path == repository_data.get("local_path")).first()
+            )
+
+            if existing_repo:
+                return {
+                    "status": "error",
+                    "message": "该本地路径的仓库已存在",
+                    "existing_repository": existing_repo.to_dict(include_tasks=False),
+                }
+
+            # 创建新仓库记录
+            new_repository = Repository(
+                user_id=repository_data.get("user_id", 1),  # 默认用户ID为1
+                name=repository_data["name"],
+                full_name=repository_data.get("full_name"),
+                local_path=repository_data["local_path"],
+                status=repository_data.get("status", 1),
+            )
+
+            db.add(new_repository)
+            db.commit()
+            db.refresh(new_repository)
+
+            logger.info(f"成功创建仓库: {new_repository.name} (ID: {new_repository.id})")
+
+            return {
+                "status": "success",
+                "message": "仓库创建成功",
+                "repository": new_repository.to_dict(include_tasks=False),
+            }
+
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error(f"数据库操作失败: {str(e)}")
+            return {
+                "status": "error",
+                "message": "数据库操作失败",
+                "error": str(e),
+            }
+        except Exception as e:
+            db.rollback()
+            logger.error(f"创建仓库时发生未知错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "创建仓库时发生未知错误",
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
+
+    @staticmethod
     def _calculate_repository_statistics(repositories: list) -> dict:
         """
         计算仓库统计信息
@@ -414,26 +1077,264 @@ class RepositoryService:
             dict: 统计信息
         """
         statistics = {
-            "by_language": {},
-            "has_description": 0,
-            "has_url": 0,
+            "by_status": {"active": 0, "deleted": 0},
+            "by_user": {},
             "total_repositories": len(repositories),
+            "has_full_name": 0,
         }
 
         for repo in repositories:
-            # 按编程语言统计
-            language = repo.language or "unknown"
-            statistics["by_language"][language] = statistics["by_language"].get(language, 0) + 1
+            # 按状态统计
+            if repo.status == 1:
+                statistics["by_status"]["active"] += 1
+            else:
+                statistics["by_status"]["deleted"] += 1
 
-            # 统计有描述的仓库
-            if repo.description:
-                statistics["has_description"] += 1
+            # 按用户统计
+            user_id = str(repo.user_id)
+            statistics["by_user"][user_id] = statistics["by_user"].get(user_id, 0) + 1
 
-            # 统计有URL的仓库
-            if repo.url:
-                statistics["has_url"] += 1
+            # 统计有完整名称的仓库
+            if repo.full_name:
+                statistics["has_full_name"] += 1
 
         return statistics
+
+    @staticmethod
+    def update_repository(repository_id: int, update_data: dict, db: Session = None) -> dict:
+        """
+        更新仓库信息
+
+        Args:
+            repository_id: 仓库ID
+            update_data: 更新数据字典
+            db: 数据库会话（可选）
+
+        Returns:
+            dict: 包含更新结果的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            # 查询要更新的仓库
+            repository = db.query(Repository).filter(Repository.id == repository_id).first()
+
+            if not repository:
+                return {
+                    "status": "error",
+                    "message": f"未找到ID为 {repository_id} 的仓库记录",
+                    "repository_id": repository_id,
+                }
+
+            # 如果要更新local_path，检查是否与其他仓库冲突
+            if "local_path" in update_data and update_data["local_path"] != repository.local_path:
+                existing_repo = (
+                    db.query(Repository)
+                    .filter(Repository.local_path == update_data["local_path"], Repository.id != repository_id)
+                    .first()
+                )
+
+                if existing_repo:
+                    return {
+                        "status": "error",
+                        "message": "该本地路径已被其他仓库使用",
+                        "conflicting_repository": existing_repo.to_dict(include_tasks=False),
+                    }
+
+            # 更新字段
+            for field, value in update_data.items():
+                if hasattr(repository, field):
+                    setattr(repository, field, value)
+
+            db.commit()
+            db.refresh(repository)
+
+            logger.info(f"成功更新仓库ID {repository_id} 的信息")
+
+            return {
+                "status": "success",
+                "message": "仓库信息更新成功",
+                "repository": repository.to_dict(include_tasks=False),
+            }
+
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error(f"数据库操作失败: {str(e)}")
+            return {
+                "status": "error",
+                "message": "数据库操作失败",
+                "repository_id": repository_id,
+                "error": str(e),
+            }
+        except Exception as e:
+            db.rollback()
+            logger.error(f"更新仓库信息时发生未知错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "更新仓库信息时发生未知错误",
+                "repository_id": repository_id,
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
+
+    @staticmethod
+    def get_repository_by_id(repository_id: int, db: Session = None, include_tasks: bool = True) -> dict:
+        """
+        根据仓库ID获取仓库信息
+
+        Args:
+            repository_id: 仓库ID
+            db: 数据库会话（可选）
+            include_tasks: 是否包含分析任务信息
+
+        Returns:
+            dict: 包含仓库信息的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            # 查询指定ID的仓库记录
+            repository = db.query(Repository).filter(Repository.id == repository_id).first()
+
+            # 如果需要包含任务信息，手动查询任务
+            if include_tasks and repository:
+                tasks = (
+                    db.query(AnalysisTask)
+                    .filter(AnalysisTask.repository_id == repository.id)
+                    .order_by(AnalysisTask.start_time.desc())
+                    .all()
+                )
+                # 手动设置任务列表
+                repository.analysis_tasks = tasks
+
+            if not repository:
+                return {
+                    "status": "success",
+                    "message": f"未找到ID为 {repository_id} 的仓库记录",
+                    "repository_id": repository_id,
+                    "repository": None,
+                }
+
+            logger.info(f"成功获取仓库ID {repository_id} 的信息")
+
+            return {
+                "status": "success",
+                "message": "仓库信息获取成功",
+                "repository_id": repository_id,
+                "repository": repository.to_dict(include_tasks=include_tasks),
+            }
+
+        except SQLAlchemyError as e:
+            logger.error(f"数据库查询失败: {str(e)}")
+            return {
+                "status": "error",
+                "message": "数据库查询失败",
+                "repository_id": repository_id,
+                "error": str(e),
+            }
+        except Exception as e:
+            logger.error(f"获取仓库信息时发生未知错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "获取仓库信息时发生未知错误",
+                "repository_id": repository_id,
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
+
+    @staticmethod
+    def delete_repository(repository_id: int, db: Session = None, soft_delete: bool = True) -> dict:
+        """
+        删除仓库（支持软删除和硬删除）
+
+        Args:
+            repository_id: 仓库ID
+            db: 数据库会话（可选）
+            soft_delete: 是否软删除（True=设置status为0，False=物理删除）
+
+        Returns:
+            dict: 包含删除结果的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            # 查询要删除的仓库
+            repository = db.query(Repository).filter(Repository.id == repository_id).first()
+
+            if not repository:
+                return {
+                    "status": "error",
+                    "message": f"未找到ID为 {repository_id} 的仓库记录",
+                    "repository_id": repository_id,
+                }
+
+            if soft_delete:
+                # 软删除：设置status为0
+                repository.status = 0
+                db.commit()
+
+                logger.info(f"成功软删除仓库ID {repository_id}")
+
+                return {
+                    "status": "success",
+                    "message": "仓库已标记为删除状态",
+                    "repository_id": repository_id,
+                    "delete_type": "soft",
+                    "repository": repository.to_dict(include_tasks=False),
+                }
+            else:
+                # 硬删除：物理删除记录（注意：会级联删除相关的分析任务和文件分析记录）
+                repository_data = repository.to_dict(include_tasks=False)
+                db.delete(repository)
+                db.commit()
+
+                logger.info(f"成功硬删除仓库ID {repository_id}")
+
+                return {
+                    "status": "success",
+                    "message": "仓库已物理删除",
+                    "repository_id": repository_id,
+                    "delete_type": "hard",
+                    "deleted_repository": repository_data,
+                }
+
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error(f"数据库操作失败: {str(e)}")
+            return {
+                "status": "error",
+                "message": "数据库操作失败",
+                "repository_id": repository_id,
+                "error": str(e),
+            }
+        except Exception as e:
+            db.rollback()
+            logger.error(f"删除仓库时发生未知错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "删除仓库时发生未知错误",
+                "repository_id": repository_id,
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
 
 
 class AnalysisTaskService:
@@ -464,7 +1365,17 @@ class AnalysisTaskService:
 
         try:
             # 验证排序字段
-            valid_order_fields = ["start_time", "end_time", "status", "total_files", "id"]
+            valid_order_fields = [
+                "start_time",
+                "end_time",
+                "status",
+                "total_files",
+                "successful_files",
+                "failed_files",
+                "code_lines",
+                "module_count",
+                "id",
+            ]
             if order_by not in valid_order_fields:
                 order_by = "start_time"
 
@@ -569,6 +1480,8 @@ class AnalysisTaskService:
             "total_files": 0,
             "total_successful_files": 0,
             "total_failed_files": 0,
+            "total_code_lines": 0,
+            "total_module_count": 0,
             "average_success_rate": 0,
             "latest_task": None,
             "running_tasks": 0,
@@ -585,13 +1498,17 @@ class AnalysisTaskService:
             status = task.status or "unknown"
             statistics["by_status"][status] = statistics["by_status"].get(status, 0) + 1
 
-            # 统计文件数
+            # 统计文件数和其他指标
             if task.total_files:
                 statistics["total_files"] += task.total_files
             if task.successful_files:
                 statistics["total_successful_files"] += task.successful_files
             if task.failed_files:
                 statistics["total_failed_files"] += task.failed_files
+            if task.code_lines:
+                statistics["total_code_lines"] += task.code_lines
+            if task.module_count:
+                statistics["total_module_count"] += task.module_count
 
             # 计算成功率
             if task.total_files and task.total_files > 0:
@@ -620,3 +1537,560 @@ class AnalysisTaskService:
             }
 
         return statistics
+
+    @staticmethod
+    def create_analysis_task(task_data: dict, db: Session = None) -> dict:
+        """
+        创建新的分析任务
+
+        Args:
+            task_data: 任务数据字典
+            db: 数据库会话（可选）
+
+        Returns:
+            dict: 包含创建结果的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            # 验证repository_id是否存在
+            repository = db.query(Repository).filter(Repository.id == task_data["repository_id"]).first()
+            if not repository:
+                return {
+                    "status": "error",
+                    "message": f"仓库ID {task_data['repository_id']} 不存在",
+                    "repository_id": task_data["repository_id"],
+                }
+
+            # 创建新任务记录
+            new_task = AnalysisTask(
+                repository_id=task_data["repository_id"],
+                total_files=task_data.get("total_files", 0),
+                successful_files=task_data.get("successful_files", 0),
+                failed_files=task_data.get("failed_files", 0),
+                code_lines=task_data.get("code_lines", 0),
+                module_count=task_data.get("module_count", 0),
+                status=task_data.get("status", "pending"),
+                end_time=task_data.get("end_time"),
+            )
+
+            db.add(new_task)
+            db.commit()
+            db.refresh(new_task)
+
+            logger.info(f"成功创建分析任务: ID {new_task.id}, 仓库ID {new_task.repository_id}")
+
+            return {
+                "status": "success",
+                "message": "分析任务创建成功",
+                "task": new_task.to_dict(),
+            }
+
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error(f"数据库操作失败: {str(e)}")
+            return {
+                "status": "error",
+                "message": "数据库操作失败",
+                "error": str(e),
+            }
+        except Exception as e:
+            db.rollback()
+            logger.error(f"创建分析任务时发生未知错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "创建分析任务时发生未知错误",
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
+
+    @staticmethod
+    def update_analysis_task(task_id: int, update_data: dict, db: Session = None) -> dict:
+        """
+        更新分析任务信息
+
+        Args:
+            task_id: 任务ID
+            update_data: 更新数据字典
+            db: 数据库会话（可选）
+
+        Returns:
+            dict: 包含更新结果的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            # 查询要更新的任务
+            task = db.query(AnalysisTask).filter(AnalysisTask.id == task_id).first()
+
+            if not task:
+                return {
+                    "status": "error",
+                    "message": f"未找到ID为 {task_id} 的分析任务记录",
+                    "task_id": task_id,
+                }
+
+            # 如果要更新repository_id，检查是否存在
+            if "repository_id" in update_data:
+                repository = db.query(Repository).filter(Repository.id == update_data["repository_id"]).first()
+                if not repository:
+                    return {
+                        "status": "error",
+                        "message": f"仓库ID {update_data['repository_id']} 不存在",
+                        "repository_id": update_data["repository_id"],
+                    }
+
+            # 更新字段
+            for field, value in update_data.items():
+                if hasattr(task, field):
+                    setattr(task, field, value)
+
+            db.commit()
+            db.refresh(task)
+
+            logger.info(f"成功更新分析任务ID {task_id} 的信息")
+
+            return {
+                "status": "success",
+                "message": "分析任务信息更新成功",
+                "task": task.to_dict(),
+            }
+
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error(f"数据库操作失败: {str(e)}")
+            return {
+                "status": "error",
+                "message": "数据库操作失败",
+                "task_id": task_id,
+                "error": str(e),
+            }
+        except Exception as e:
+            db.rollback()
+            logger.error(f"更新分析任务时发生未知错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "更新分析任务时发生未知错误",
+                "task_id": task_id,
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
+
+    @staticmethod
+    def delete_analysis_task(task_id: int, db: Session = None) -> dict:
+        """
+        删除分析任务（硬删除，会级联删除相关的文件分析记录）
+
+        Args:
+            task_id: 任务ID
+            db: 数据库会话（可选）
+
+        Returns:
+            dict: 包含删除结果的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            # 查询要删除的任务
+            task = db.query(AnalysisTask).filter(AnalysisTask.id == task_id).first()
+
+            if not task:
+                return {
+                    "status": "error",
+                    "message": f"未找到ID为 {task_id} 的分析任务记录",
+                    "task_id": task_id,
+                }
+
+            # 保存任务数据用于返回
+            task_data = task.to_dict()
+
+            # 物理删除记录（会级联删除相关的文件分析记录）
+            db.delete(task)
+            db.commit()
+
+            logger.info(f"成功删除分析任务ID {task_id}")
+
+            return {
+                "status": "success",
+                "message": "分析任务已删除",
+                "task_id": task_id,
+                "deleted_task": task_data,
+            }
+
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error(f"数据库操作失败: {str(e)}")
+            return {
+                "status": "error",
+                "message": "数据库操作失败",
+                "task_id": task_id,
+                "error": str(e),
+            }
+        except Exception as e:
+            db.rollback()
+            logger.error(f"删除分析任务时发生未知错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "删除分析任务时发生未知错误",
+                "task_id": task_id,
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
+
+
+class UploadService:
+    """文件上传服务类"""
+
+    @staticmethod
+    async def upload_repository_files(files: list, repository_name: str, db: Session = None) -> dict:
+        """
+        上传整个仓库文件夹到本地存储
+
+        Args:
+            files: 上传的文件列表（包含完整文件夹结构）
+            repository_name: 仓库名称
+            db: 数据库会话（可选）
+
+        Returns:
+            dict: 包含上传结果和文件夹结构分析的字典
+        """
+        import os
+        import shutil
+        from pathlib import Path
+        from config import settings
+
+        should_close = False
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+
+        try:
+            # 验证仓库名称
+            if not repository_name or not repository_name.strip():
+                return {
+                    "status": "error",
+                    "message": "仓库名称不能为空",
+                    "repository_name": repository_name,
+                }
+
+            # 清理仓库名称，移除特殊字符
+            clean_repo_name = "".join(c for c in repository_name if c.isalnum() or c in ("-", "_", ".")).strip()
+            if not clean_repo_name:
+                return {
+                    "status": "error",
+                    "message": "仓库名称包含无效字符",
+                    "repository_name": repository_name,
+                }
+
+            # 创建本地存储目录
+            repo_path = Path(settings.LOCAL_REPO_PATH) / clean_repo_name
+
+            # 如果目录已存在，先删除
+            if repo_path.exists():
+                shutil.rmtree(repo_path)
+
+            repo_path.mkdir(parents=True, exist_ok=True)
+
+            # 保存上传的文件并分析文件夹结构
+            saved_files = []
+            failed_files = []
+            folder_structure = {}
+            file_types = {}
+            total_size = 0
+
+            logger.info(f"开始处理 {len(files)} 个文件的上传")
+
+            # 检测根文件夹名称（用于移除重复嵌套）
+            root_folder_name = None
+            if files:
+                # 从第一个文件路径中提取根文件夹名称
+                first_file_path = files[0].filename
+                if first_file_path and "/" in first_file_path:
+                    root_folder_name = first_file_path.split("/")[0]
+                    logger.info(f"检测到根文件夹: {root_folder_name}")
+
+            # 打印前几个文件的详细信息用于调试
+            for i, file in enumerate(files[:5]):
+                logger.info(f"文件 {i}: filename={file.filename}, content_type={file.content_type}")
+
+            for file in files:
+                try:
+                    # 获取文件的相对路径（前端上传时会保持目录结构）
+                    file_path = file.filename
+                    if not file_path:
+                        logger.warning("跳过空文件名的文件")
+                        continue
+
+                    # 移除根文件夹路径，避免重复嵌套
+                    if root_folder_name and file_path.startswith(root_folder_name + "/"):
+                        relative_file_path = file_path[len(root_folder_name) + 1 :]
+                    else:
+                        relative_file_path = file_path
+
+                    # 如果处理后路径为空，跳过
+                    if not relative_file_path:
+                        logger.warning(f"处理后路径为空，跳过文件: {file_path}")
+                        continue
+
+                    logger.debug(f"处理文件: {file_path} -> {relative_file_path}")
+
+                    # 创建完整的文件路径
+                    full_file_path = repo_path / relative_file_path
+
+                    logger.debug(f"完整文件路径: {full_file_path}")
+
+                    # 确保父目录存在
+                    full_file_path.parent.mkdir(parents=True, exist_ok=True)
+
+                    # 保存文件内容
+                    content = await file.read()
+                    file_size = len(content)
+
+                    with open(full_file_path, "wb") as f:
+                        f.write(content)
+
+                    # 分析文件信息
+                    file_extension = full_file_path.suffix.lower().lstrip(".")
+                    if not file_extension:
+                        file_extension = "no_extension"
+
+                    # 统计文件类型
+                    file_types[file_extension] = file_types.get(file_extension, 0) + 1
+                    total_size += file_size
+
+                    # 分析文件夹结构（使用处理后的相对路径）
+                    path_parts = Path(relative_file_path).parts
+                    current_level = folder_structure
+                    for part in path_parts[:-1]:  # 排除文件名，只处理文件夹
+                        if part not in current_level:
+                            current_level[part] = {}
+                        current_level = current_level[part]
+
+                    saved_files.append(
+                        {
+                            "filename": file.filename,
+                            "size": file_size,
+                            "path": str(full_file_path.relative_to(repo_path)),
+                            "extension": file_extension,
+                            "relative_path": relative_file_path,  # 使用处理后的路径
+                            "original_path": file_path,  # 保留原始路径用于调试
+                        }
+                    )
+
+                    logger.debug(f"成功保存文件: {relative_file_path} ({file_size} bytes)")
+
+                except Exception as e:
+                    logger.error(f"保存文件失败 {file.filename}: {str(e)}")
+                    failed_files.append({"filename": file.filename, "error": str(e)})
+
+            # 检查是否有文件成功保存
+            if not saved_files:
+                return {
+                    "status": "error",
+                    "message": "没有文件成功保存",
+                    "repository_name": repository_name,
+                    "failed_files": failed_files,
+                }
+
+            # 检查仓库是否已存在于数据库中
+            existing_repo = db.query(Repository).filter(Repository.name == clean_repo_name).first()
+
+            if existing_repo:
+                # 更新现有仓库信息
+                existing_repo.local_path = str(repo_path)
+                existing_repo.status = 1  # 设置为存在状态
+                existing_repo.updated_at = datetime.now(timezone.utc)
+                repository = existing_repo
+            else:
+                # 创建新的仓库记录
+                repository = Repository(
+                    user_id=1,  # 默认用户ID
+                    name=clean_repo_name,
+                    full_name=clean_repo_name,
+                    local_path=str(repo_path),
+                    status=1,
+                )
+                db.add(repository)
+
+            # 提交数据库更改
+            db.commit()
+            db.refresh(repository)
+
+            # 生成文件夹统计信息
+            folder_stats = UploadService._analyze_folder_structure(folder_structure, file_types, total_size)
+
+            logger.info(
+                f"成功上传仓库 '{clean_repo_name}'，共保存 {len(saved_files)} 个文件，总大小 {total_size} bytes"
+            )
+
+            return {
+                "status": "success",
+                "message": "仓库文件夹上传成功",
+                "repository_name": clean_repo_name,
+                "repository_id": repository.id,
+                "local_path": str(repo_path),
+                "upload_summary": {
+                    "total_files_uploaded": len(files),
+                    "successful_files": len(saved_files),
+                    "failed_files": len(failed_files),
+                    "total_size_bytes": total_size,
+                    "total_size_formatted": UploadService._format_file_size(total_size),
+                },
+                "folder_structure": folder_structure,
+                "file_analysis": folder_stats,
+                "sample_files": saved_files[:10],  # 前10个文件的详情
+                "errors": failed_files if failed_files else None,
+            }
+
+        except Exception as e:
+            logger.error(f"上传仓库文件时发生错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "上传仓库文件时发生未知错误",
+                "repository_name": repository_name,
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
+
+    @staticmethod
+    def _analyze_folder_structure(folder_structure: dict, file_types: dict, total_size: int) -> dict:
+        """
+        分析文件夹结构和文件类型统计
+
+        Args:
+            folder_structure: 文件夹结构字典
+            file_types: 文件类型统计
+            total_size: 总文件大小
+
+        Returns:
+            dict: 分析结果
+        """
+        # 分类文件类型
+        code_extensions = {
+            "py",
+            "js",
+            "ts",
+            "jsx",
+            "tsx",
+            "java",
+            "cpp",
+            "c",
+            "h",
+            "hpp",
+            "cs",
+            "php",
+            "rb",
+            "go",
+            "rs",
+            "swift",
+            "kt",
+            "scala",
+            "r",
+            "vue",
+            "html",
+            "htm",
+            "css",
+            "scss",
+            "sass",
+            "less",
+        }
+
+        config_extensions = {
+            "json",
+            "yml",
+            "yaml",
+            "xml",
+            "ini",
+            "conf",
+            "config",
+            "toml",
+            "env",
+            "properties",
+            "cfg",
+            "settings",
+        }
+
+        doc_extensions = {"md", "txt", "rst", "adoc", "doc", "docx", "pdf"}
+
+        image_extensions = {"png", "jpg", "jpeg", "gif", "svg", "webp", "ico", "bmp"}
+
+        # 统计各类文件
+        code_files = sum(count for ext, count in file_types.items() if ext in code_extensions)
+        config_files = sum(count for ext, count in file_types.items() if ext in config_extensions)
+        doc_files = sum(count for ext, count in file_types.items() if ext in doc_extensions)
+        image_files = sum(count for ext, count in file_types.items() if ext in image_extensions)
+        other_files = sum(file_types.values()) - (code_files + config_files + doc_files + image_files)
+
+        # 计算文件夹深度
+        max_depth = UploadService._calculate_folder_depth(folder_structure)
+
+        return {
+            "file_type_summary": {
+                "code_files": code_files,
+                "config_files": config_files,
+                "documentation_files": doc_files,
+                "image_files": image_files,
+                "other_files": other_files,
+            },
+            "file_extensions": dict(sorted(file_types.items(), key=lambda x: x[1], reverse=True)),
+            "folder_depth": max_depth,
+            "folder_count": UploadService._count_folders(folder_structure),
+            "is_likely_code_project": code_files > 0 and (code_files + config_files) > len(file_types) * 0.3,
+        }
+
+    @staticmethod
+    def _calculate_folder_depth(folder_structure: dict, current_depth: int = 0) -> int:
+        """计算文件夹最大深度"""
+        if not folder_structure:
+            return current_depth
+
+        max_depth = current_depth
+        for subfolder in folder_structure.values():
+            if isinstance(subfolder, dict):
+                depth = UploadService._calculate_folder_depth(subfolder, current_depth + 1)
+                max_depth = max(max_depth, depth)
+
+        return max_depth
+
+    @staticmethod
+    def _count_folders(folder_structure: dict) -> int:
+        """计算文件夹总数"""
+        count = len(folder_structure)
+        for subfolder in folder_structure.values():
+            if isinstance(subfolder, dict):
+                count += UploadService._count_folders(subfolder)
+        return count
+
+    @staticmethod
+    def _format_file_size(size_bytes: int) -> str:
+        """格式化文件大小"""
+        if size_bytes == 0:
+            return "0 B"
+
+        size_names = ["B", "KB", "MB", "GB", "TB"]
+        import math
+
+        i = int(math.floor(math.log(size_bytes, 1024)))
+        p = math.pow(1024, i)
+        s = round(size_bytes / p, 2)
+        return f"{s} {size_names[i]}"

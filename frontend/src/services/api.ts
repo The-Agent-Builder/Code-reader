@@ -444,6 +444,86 @@ export class ApiService {
     );
     return response;
   }
+
+  // 上传仓库文件夹（新增）
+  async uploadRepository(
+    files: FileList,
+    repositoryName: string
+  ): Promise<{
+    status: string;
+    message: string;
+    repository_name: string;
+    repository_id?: number;
+    local_path?: string;
+    upload_summary?: {
+      total_files_uploaded: number;
+      successful_files: number;
+      failed_files: number;
+      total_size_bytes: number;
+      total_size_formatted: string;
+    };
+    folder_structure?: Record<string, any>;
+    file_analysis?: {
+      file_type_summary: {
+        code_files: number;
+        config_files: number;
+        documentation_files: number;
+        image_files: number;
+        other_files: number;
+      };
+      file_extensions: Record<string, number>;
+      folder_depth: number;
+      folder_count: number;
+      is_likely_code_project: boolean;
+    };
+    sample_files?: Array<{
+      filename: string;
+      size: number;
+      path: string;
+      extension: string;
+      relative_path: string;
+    }>;
+    errors?: Array<{
+      filename: string;
+      error: string;
+    }>;
+  }> {
+    const formData = new FormData();
+
+    // 添加仓库名称
+    formData.append("repository_name", repositoryName);
+
+    // 添加所有文件，确保文件名包含完整路径
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const relativePath = (file as any).webkitRelativePath || file.name;
+
+      // 创建新的 File 对象，使用完整路径作为文件名
+      const fileWithPath = new File([file], relativePath, {
+        type: file.type,
+        lastModified: file.lastModified,
+      });
+
+      formData.append("files", fileWithPath);
+    }
+
+    console.log(
+      `Uploading repository: ${repositoryName} with ${files.length} files`
+    );
+
+    const response = await fetch(`${this.baseUrl}/api/repository/upload`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log(`Upload response:`, result);
+    return result;
+  }
 }
 
 // 默认API服务实例
@@ -487,6 +567,10 @@ export const api = {
   getFilesByTaskId: (taskId: number) => apiService.getFilesByTaskId(taskId),
   getAnalysisItemsByFileId: (fileAnalysisId: number) =>
     apiService.getAnalysisItemsByFileId(fileAnalysisId),
+
+  // 上传相关
+  uploadRepository: (files: FileList, repositoryName: string) =>
+    apiService.uploadRepository(files, repositoryName),
 };
 
 export default api;

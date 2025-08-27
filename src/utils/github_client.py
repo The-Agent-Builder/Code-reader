@@ -5,7 +5,7 @@ GitHub API 客户端模块
 
 import asyncio
 import time
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, Tuple
 import aiohttp
 from urllib.parse import urlparse
 
@@ -49,7 +49,7 @@ class GitHubClient:
             headers["Authorization"] = f"token {self.token}"
         return headers
 
-    def _parse_repo_url(self, repo_url: str) -> tuple[str, str]:
+    def _parse_repo_url(self, repo_url: str) -> Tuple[str, str]:
         """解析仓库URL，提取owner和repo名称"""
         try:
             # 检查输入是否为None或空字符串

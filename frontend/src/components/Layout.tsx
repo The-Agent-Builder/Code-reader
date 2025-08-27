@@ -69,6 +69,8 @@ export default function Layout() {
     const path = location.pathname;
     if (path === "/upload" || path === "/") {
       return "upload";
+    } else if (path === "/config") {
+      return "config";
     } else if (path === "/analysis") {
       return "analyzing";
     } else if (path.startsWith("/result/")) {
@@ -88,6 +90,9 @@ export default function Layout() {
     switch (page) {
       case "upload":
         navigate("/upload");
+        break;
+      case "config":
+        navigate("/config");
         break;
       case "analyzing":
         navigate("/analysis");

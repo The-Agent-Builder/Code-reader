@@ -1,23 +1,19 @@
-import { useState, useCallback, useEffect } from 'react';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
-import { Upload, Folder, TrendingUp, Users, Shield } from 'lucide-react';
-import AnalysisConfig from './AnalysisConfig';
-
-interface AnalysisConfiguration {
-  mode: 'overall' | 'individual';
-  selectedFiles: string[];
-}
+import { useState, useCallback, useEffect } from "react";
+import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
+import { Upload, Folder, TrendingUp, Users, Shield } from "lucide-react";
 
 interface UploadPageProps {
-  onStartAnalysis: (config: AnalysisConfiguration) => void;
+  onNextStep: (files: FileList) => void;
   totalAnalyzedProjects: number;
 }
 
-export default function UploadPage({ onStartAnalysis, totalAnalyzedProjects }: UploadPageProps) {
+export default function UploadPage({
+  onNextStep,
+  totalAnalyzedProjects,
+}: UploadPageProps) {
   const [dragActive, setDragActive] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
-  const [showConfig, setShowConfig] = useState(false);
   const [animatingNumber, setAnimatingNumber] = useState(totalAnalyzedProjects);
 
   // 数字动画效果 - 当totalAnalyzedProjects变化时平滑过渡
@@ -34,7 +30,7 @@ export default function UploadPage({ onStartAnalysis, totalAnalyzedProjects }: U
           setAnimatingNumber(totalAnalyzedProjects);
           clearInterval(animationInterval);
         } else {
-          setAnimatingNumber(prev => Math.round(prev + stepSize));
+          setAnimatingNumber((prev) => Math.round(prev + stepSize));
         }
       }, 50);
 
@@ -56,19 +52,20 @@ export default function UploadPage({ onStartAnalysis, totalAnalyzedProjects }: U
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       setSelectedFiles(e.dataTransfer.files);
-      setShowConfig(true); // 自动进入配置页面
     }
   }, []);
 
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setSelectedFiles(e.target.files);
-      setShowConfig(true); // 自动进入配置页面
-    }
-  }, []);
+  const handleFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files.length > 0) {
+        setSelectedFiles(e.target.files);
+      }
+    },
+    []
+  );
 
   const formatNumber = (num: number) => {
     if (num >= 10000) {
@@ -77,31 +74,20 @@ export default function UploadPage({ onStartAnalysis, totalAnalyzedProjects }: U
     return num.toLocaleString();
   };
 
-  const handleConfigComplete = (config: AnalysisConfiguration) => {
-    onStartAnalysis(config);
-  };
-
-  const handleBackToUpload = () => {
-    setShowConfig(false);
-    setSelectedFiles(null); // 清除已选文件
+  const handleNextStep = () => {
+    if (selectedFiles) {
+      onNextStep(selectedFiles);
+    }
   };
 
   const handleSelectFolderClick = () => {
-    const fileInput = document.getElementById('file-upload') as HTMLInputElement;
+    const fileInput = document.getElementById(
+      "file-upload"
+    ) as HTMLInputElement;
     if (fileInput) {
       fileInput.click();
     }
   };
-
-  if (showConfig && selectedFiles) {
-    return (
-      <AnalysisConfig
-        selectedFiles={selectedFiles}
-        onStartAnalysis={handleConfigComplete}
-        onBack={handleBackToUpload}
-      />
-    );
-  }
 
   return (
     <div className="h-full flex flex-col items-center justify-center p-8 bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -110,7 +96,7 @@ export default function UploadPage({ onStartAnalysis, totalAnalyzedProjects }: U
           <p className="text-lg text-gray-600">
             让 AI 帮您快速理解任何代码库的架构和逻辑
           </p>
-          
+
           {/* 平台统计信息卡片 */}
           <div className="flex flex-wrap justify-center gap-6 mt-6">
             <div className="bg-white/80 backdrop-blur-sm rounded-lg px-6 py-4 border border-blue-200/50 shadow-sm">
@@ -126,7 +112,7 @@ export default function UploadPage({ onStartAnalysis, totalAnalyzedProjects }: U
                 </div>
               </div>
             </div>
-            
+
             <div className="bg-white/80 backdrop-blur-sm rounded-lg px-6 py-4 border border-green-200/50 shadow-sm">
               <div className="flex items-center space-x-3">
                 <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
@@ -142,7 +128,10 @@ export default function UploadPage({ onStartAnalysis, totalAnalyzedProjects }: U
 
           {/* 实时活动指示 */}
           <div className="flex justify-center mt-4">
-            <Badge variant="secondary" className="animate-pulse bg-blue-100 text-blue-700 border border-blue-200">
+            <Badge
+              variant="secondary"
+              className="animate-pulse bg-blue-100 text-blue-700 border border-blue-200"
+            >
               <div className="w-2 h-2 bg-blue-500 rounded-full mr-2 animate-ping"></div>
               实时分析进行中
             </Badge>
@@ -152,11 +141,12 @@ export default function UploadPage({ onStartAnalysis, totalAnalyzedProjects }: U
         <div
           className={`
             relative border-2 border-dashed rounded-2xl p-12 text-center transition-all duration-200
-            ${dragActive 
-              ? 'border-blue-400 bg-blue-50' 
-              : selectedFiles 
-                ? 'border-green-400 bg-green-50' 
-                : 'border-gray-300 bg-white hover:border-gray-400'
+            ${
+              dragActive
+                ? "border-blue-400 bg-blue-50"
+                : selectedFiles
+                ? "border-green-400 bg-green-50"
+                : "border-gray-300 bg-white hover:border-gray-400"
             }
           `}
           onDragEnter={handleDrag}
@@ -172,7 +162,7 @@ export default function UploadPage({ onStartAnalysis, totalAnalyzedProjects }: U
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             onChange={handleFileSelect}
           />
-          
+
           <div className="space-y-4">
             {selectedFiles ? (
               <>
@@ -193,9 +183,7 @@ export default function UploadPage({ onStartAnalysis, totalAnalyzedProjects }: U
                   <h3 className="text-lg font-medium text-gray-700">
                     拖拽您的代码库文件夹到此处
                   </h3>
-                  <p className="text-sm text-gray-500">
-                    或点击选择本地文件夹
-                  </p>
+                  <p className="text-sm text-gray-500">或点击选择本地文件夹</p>
                 </div>
               </>
             )}
@@ -203,17 +191,17 @@ export default function UploadPage({ onStartAnalysis, totalAnalyzedProjects }: U
         </div>
 
         <div className="flex justify-center space-x-4">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={handleSelectFolderClick}
             className="cursor-pointer"
           >
             <Folder className="mr-2 h-4 w-4" />
             选择本地文件夹
           </Button>
-          
-          <Button 
-            onClick={() => setShowConfig(true)}
+
+          <Button
+            onClick={handleNextStep}
             disabled={!selectedFiles}
             className="px-8"
           >
@@ -224,12 +212,14 @@ export default function UploadPage({ onStartAnalysis, totalAnalyzedProjects }: U
         <div className="text-center text-xs text-gray-500 max-w-md mx-auto">
           <div className="flex items-center justify-center space-x-2 mb-2">
             <Shield className="h-4 w-4 text-blue-500" />
-            <p>
-              🔒 代码分析使用本地模型运行，不会出域，确保您的代码安全
-            </p>
+            <p>🔒 代码分析使用本地模型运行，不会出域，确保您的代码安全</p>
           </div>
           <p className="text-xs text-gray-400 mt-2">
-            已有 <span className="text-blue-600 font-medium">{formatNumber(animatingNumber)}</span> 个项目通过我们的平台获得深度分析
+            已有{" "}
+            <span className="text-blue-600 font-medium">
+              {formatNumber(animatingNumber)}
+            </span>{" "}
+            个项目通过我们的平台获得深度分析
           </p>
         </div>
       </div>

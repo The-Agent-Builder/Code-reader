@@ -3,18 +3,17 @@ GitHub 仓库分析主流程
 整合所有节点，实现完整的代码仓库解析流程
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 from pocketflow import AsyncFlow
 
-from ..nodes import (
-    GitHubInfoFetchNode,
-    GitCloneNode,
-    VectorizeRepoNode,
-    CodeParsingBatchNode,
-    ReadmeAnalysisNode,
-    SaveResultsNode,
-    SaveToMySQLNode,
-)
+# 直接导入需要的节点，避免 __init__.py 的依赖问题
+from ..nodes.github_info_fetch_node import GitHubInfoFetchNode
+from ..nodes.git_clone_node import GitCloneNode
+from ..nodes.vectorize_repo_node import VectorizeRepoNode
+from ..nodes.code_parsing_batch_node import CodeParsingBatchNode
+from ..nodes.readme_analysis_node import ReadmeAnalysisNode
+from ..nodes.save_results_node import SaveResultsNode
+from ..nodes.save_to_mysql_node import SaveToMySQLNode
 from ..utils.logger import logger
 
 
@@ -241,8 +240,8 @@ def create_analysis_flow(flow_type: str = "full", **kwargs) -> AsyncFlow:
 
 # 批量分析函数
 async def analyze_repositories_batch(
-    repo_urls: list[str], use_vectorization: bool = True, batch_size: int = 5
-) -> list[Dict[str, Any]]:
+    repo_urls: List[str], use_vectorization: bool = True, batch_size: int = 5
+) -> List[Dict[str, Any]]:
     """
     批量分析多个仓库
 

@@ -43,6 +43,7 @@ interface ProjectVersion {
 interface TopNavigationProps {
   currentPage:
     | "upload"
+    | "config"
     | "analyzing"
     | "deepwiki"
     | "background"
@@ -77,6 +78,8 @@ export default function TopNavigation({
     switch (currentPage) {
       case "upload":
         return "AI 代码库领航员";
+      case "config":
+        return "分析配置";
       case "analyzing":
         return "代码分析中";
       case "background":

@@ -1,19 +1,19 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { Button } from './ui/button';
-import { Card } from './ui/card';
-import { Badge } from './ui/badge';
-import { Checkbox } from './ui/checkbox';
-import { RadioGroup, RadioGroupItem } from './ui/radio-group';
-import { Label } from './ui/label';
-import { ScrollArea } from './ui/scroll-area';
-import { Separator } from './ui/separator';
-import { 
-  FileText, 
-  Folder, 
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
+import { Badge } from "./ui/badge";
+import { Checkbox } from "./ui/checkbox";
+
+import { ScrollArea } from "./ui/scroll-area";
+import { Separator } from "./ui/separator";
+import { api } from "../services/api";
+import {
+  FileText,
+  Folder,
   FolderOpen,
-  Code, 
-  Settings, 
-  ChevronRight, 
+  Code,
+  Settings,
+  ChevronRight,
   ChevronDown,
   CheckCircle2,
   Search,
@@ -26,24 +26,39 @@ import {
   FileImage,
   Archive,
   FileSpreadsheet,
-  Info
-} from 'lucide-react';
+  Info,
+  Upload,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
 
 interface AnalysisConfigProps {
   selectedFiles: FileList;
-  onStartAnalysis: (config: AnalysisConfiguration) => void;
+  onStartAnalysis: (
+    config: AnalysisConfiguration & {
+      repositoryId?: number;
+      repositoryName?: string;
+    }
+  ) => void;
   onBack: () => void;
 }
 
 interface AnalysisConfiguration {
-  mode: 'overall' | 'individual';
+  mode: "overall" | "individual";
   selectedFiles: string[];
+}
+
+interface UploadState {
+  isUploading: boolean;
+  progress: number;
+  error: string | null;
+  success: boolean;
 }
 
 interface FileTreeNode {
   name: string;
   path: string;
-  type: 'file' | 'folder';
+  type: "file" | "folder";
   size?: number;
   extension?: string;
   selected: boolean;
@@ -54,85 +69,230 @@ interface FileTreeNode {
 
 const getFileIcon = (extension: string) => {
   const ext = extension.toLowerCase();
-  
+
   // 根据文件类型返回对应的lucide图标组件
-  if (['js', 'ts', 'jsx', 'tsx', 'py', 'java', 'cpp', 'c', 'go', 'rs', 'php', 'rb', 'cs', 'swift', 'kt'].includes(ext)) {
+  if (
+    [
+      "js",
+      "ts",
+      "jsx",
+      "tsx",
+      "py",
+      "java",
+      "cpp",
+      "c",
+      "go",
+      "rs",
+      "php",
+      "rb",
+      "cs",
+      "swift",
+      "kt",
+    ].includes(ext)
+  ) {
     return <FileCode className="h-4 w-4 text-blue-600" />;
   }
-  if (['vue', 'html', 'htm'].includes(ext)) {
+  if (["vue", "html", "htm"].includes(ext)) {
     return <Globe className="h-4 w-4 text-orange-600" />;
   }
-  if (['css', 'scss', 'sass', 'less'].includes(ext)) {
+  if (["css", "scss", "sass", "less"].includes(ext)) {
     return <Palette className="h-4 w-4 text-pink-600" />;
   }
-  if (['json', 'yml', 'yaml', 'xml', 'ini', 'conf', 'config'].includes(ext)) {
+  if (["json", "yml", "yaml", "xml", "ini", "conf", "config"].includes(ext)) {
     return <FileJson className="h-4 w-4 text-yellow-600" />;
   }
-  if (['sql', 'db', 'sqlite'].includes(ext)) {
+  if (["sql", "db", "sqlite"].includes(ext)) {
     return <Database className="h-4 w-4 text-green-600" />;
   }
-  if (['md', 'txt', 'rst', 'adoc'].includes(ext)) {
+  if (["md", "txt", "rst", "adoc"].includes(ext)) {
     return <FileText className="h-4 w-4 text-gray-600" />;
   }
-  if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico'].includes(ext)) {
+  if (["png", "jpg", "jpeg", "gif", "svg", "webp", "ico"].includes(ext)) {
     return <FileImage className="h-4 w-4 text-purple-600" />;
   }
-  if (['zip', 'rar', 'tar', 'gz', '7z'].includes(ext)) {
+  if (["zip", "rar", "tar", "gz", "7z"].includes(ext)) {
     return <Archive className="h-4 w-4 text-gray-600" />;
   }
-  if (['xlsx', 'xls', 'csv'].includes(ext)) {
+  if (["xlsx", "xls", "csv"].includes(ext)) {
     return <FileSpreadsheet className="h-4 w-4 text-green-600" />;
   }
-  
+
   // 默认文件图标
   return <FileText className="h-4 w-4 text-gray-500" />;
 };
 
 const formatFileSize = (bytes: number): string => {
-  if (bytes === 0) return '0 B';
+  if (bytes === 0) return "0 B";
   const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const sizes = ["B", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+};
+
+// 默认应该不选择的文件和文件夹
+const getDefaultIgnorePatterns = () => {
+  const ignoreDirs = new Set([
+    ".git",
+    "__pycache__",
+    "node_modules",
+    ".venv",
+    "venv",
+    "env",
+    ".env",
+    "dist",
+    "build",
+    ".next",
+    ".nuxt",
+    "target",
+    ".pytest_cache",
+    ".cache",
+    ".parcel-cache",
+    "coverage",
+    ".nyc_output",
+    ".tox",
+    ".nox",
+    "htmlcov",
+    ".hypothesis",
+    "bower_components",
+    "jspm_packages",
+    ".rpt2_cache",
+    ".rts2_cache_cjs",
+    ".rts2_cache_es",
+    ".rts2_cache_umd",
+    ".eggs",
+    "*.egg-info",
+    ".installed.cfg",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".dmypy.json",
+    ".pyre",
+    ".vscode",
+    ".idea",
+    "tmp",
+    "temp",
+    "logs",
+  ]);
+
+  const ignoreFiles = new Set([
+    ".gitignore",
+    ".env",
+    ".env.example",
+    ".env.local",
+    ".env.development",
+    ".env.test",
+    ".env.production",
+    "package-lock.json",
+    "yarn.lock",
+    "Pipfile.lock",
+    ".DS_Store",
+    "Thumbs.db",
+    "desktop.ini",
+    "npm-debug.log",
+    "yarn-debug.log",
+    "yarn-error.log",
+    "lerna-debug.log",
+    ".eslintcache",
+    ".tsbuildinfo",
+    ".coverage",
+    "coverage.xml",
+    "nosetests.xml",
+    ".manifest",
+    ".spec",
+    "pip-log.txt",
+    "pip-delete-this-directory.txt",
+    ".yarn-integrity",
+  ]);
+
+  return { ignoreDirs, ignoreFiles };
+};
+
+// 检查文件或文件夹是否应该默认不选择
+const shouldDefaultUnselect = (
+  name: string,
+  path: string,
+  type: "file" | "folder"
+): boolean => {
+  const { ignoreDirs, ignoreFiles } = getDefaultIgnorePatterns();
+
+  // 检查路径中是否包含被忽略的目录
+  const pathParts = path.split("/");
+  for (const part of pathParts) {
+    if (ignoreDirs.has(part)) {
+      return true; // 如果路径中包含被忽略的目录，则该文件/文件夹也应该被忽略
+    }
+  }
+
+  if (type === "folder") {
+    return ignoreDirs.has(name);
+  } else {
+    // 检查完整文件名
+    if (ignoreFiles.has(name)) {
+      return true;
+    }
+
+    // 检查通配符模式
+    if (
+      name.endsWith(".log") ||
+      name.endsWith(".pyc") ||
+      name.endsWith(".pyo") ||
+      name.endsWith(".pyd") ||
+      name.endsWith(".so") ||
+      name.endsWith(".egg") ||
+      name.endsWith(".tgz") ||
+      name.startsWith(".DS_Store") ||
+      name.includes("debug.log")
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 };
 
 // 构建文件树结构
 const buildFileTree = (fileList: FileList): FileTreeNode => {
   const root: FileTreeNode = {
-    name: 'root',
-    path: '',
-    type: 'folder',
+    name: "root",
+    path: "",
+    type: "folder",
     selected: true,
     expanded: true,
-    children: []
+    children: [],
   };
 
   const folderMap = new Map<string, FileTreeNode>();
-  folderMap.set('', root);
+  folderMap.set("", root);
 
   // 首先创建所有文件节点
   for (let i = 0; i < fileList.length; i++) {
     const file = fileList[i];
     const fullPath = file.webkitRelativePath || file.name;
-    const pathParts = fullPath.split('/');
+    const pathParts = fullPath.split("/");
     const fileName = pathParts[pathParts.length - 1];
-    const extension = fileName.split('.').pop() || '';
+    const extension = fileName.split(".").pop() || "";
 
     // 创建所有父文件夹
-    let currentPath = '';
+    let currentPath = "";
     for (let j = 0; j < pathParts.length - 1; j++) {
       const folderName = pathParts[j];
       const parentPath = currentPath;
       currentPath = currentPath ? `${currentPath}/${folderName}` : folderName;
 
       if (!folderMap.has(currentPath)) {
+        // 检查文件夹是否应该默认不选择
+        const shouldUnselect = shouldDefaultUnselect(
+          folderName,
+          currentPath,
+          "folder"
+        );
+
         const folderNode: FileTreeNode = {
           name: folderName,
           path: currentPath,
-          type: 'folder',
-          selected: true,
-          expanded: true,
-          children: []
+          type: "folder",
+          selected: !shouldUnselect,
+          expanded: !shouldUnselect, // 被忽略的文件夹默认收起，其他文件夹默认展开
+          children: [],
         };
 
         folderMap.set(currentPath, folderNode);
@@ -146,18 +306,21 @@ const buildFileTree = (fileList: FileList): FileTreeNode => {
       }
     }
 
+    // 检查文件是否应该默认不选择
+    const shouldUnselect = shouldDefaultUnselect(fileName, fullPath, "file");
+
     // 创建文件节点
     const fileNode: FileTreeNode = {
       name: fileName,
       path: fullPath,
-      type: 'file',
+      type: "file",
       size: file.size,
       extension,
-      selected: true
+      selected: !shouldUnselect,
     };
 
     // 添加到父文件夹
-    const parentPath = pathParts.slice(0, -1).join('/');
+    const parentPath = pathParts.slice(0, -1).join("/");
     const parent = folderMap.get(parentPath);
     if (parent) {
       parent.children!.push(fileNode);
@@ -170,7 +333,7 @@ const buildFileTree = (fileList: FileList): FileTreeNode => {
     if (node.children) {
       node.children.sort((a, b) => {
         if (a.type !== b.type) {
-          return a.type === 'folder' ? -1 : 1;
+          return a.type === "folder" ? -1 : 1;
         }
         return a.name.localeCompare(b.name);
       });
@@ -183,8 +346,10 @@ const buildFileTree = (fileList: FileList): FileTreeNode => {
 };
 
 // 递归计算文件夹的选择状态
-const updateFolderSelection = (node: FileTreeNode): { selected: number; total: number } => {
-  if (node.type === 'file') {
+const updateFolderSelection = (
+  node: FileTreeNode
+): { selected: number; total: number } => {
+  if (node.type === "file") {
     return { selected: node.selected ? 1 : 0, total: 1 };
   }
 
@@ -213,8 +378,11 @@ const updateFolderSelection = (node: FileTreeNode): { selected: number; total: n
 };
 
 // 获取所有选中的文件路径
-const getSelectedFiles = (node: FileTreeNode, result: string[] = []): string[] => {
-  if (node.type === 'file' && node.selected) {
+const getSelectedFiles = (
+  node: FileTreeNode,
+  result: string[] = []
+): string[] => {
+  if (node.type === "file" && node.selected) {
     result.push(node.path);
   } else if (node.children) {
     for (const child of node.children) {
@@ -242,21 +410,46 @@ const getFileStats = (node: FileTreeNode) => {
     docs: 0,
     total: 0,
     selected: 0,
-    totalSize: 0
+    totalSize: 0,
   };
 
   const traverse = (n: FileTreeNode) => {
-    if (n.type === 'file') {
+    if (n.type === "file") {
       stats.total++;
       if (n.selected) {
         stats.selected++;
         stats.totalSize += n.size || 0;
       }
 
-      const ext = n.extension?.toLowerCase() || '';
-      const codeExtensions = ['js', 'ts', 'jsx', 'tsx', 'py', 'java', 'cpp', 'c', 'go', 'rs', 'php', 'rb', 'cs', 'swift', 'kt', 'vue'];
-      const configExtensions = ['json', 'yml', 'yaml', 'xml', 'ini', 'conf', 'config'];
-      const docExtensions = ['md', 'txt', 'rst', 'adoc'];
+      const ext = n.extension?.toLowerCase() || "";
+      const codeExtensions = [
+        "js",
+        "ts",
+        "jsx",
+        "tsx",
+        "py",
+        "java",
+        "cpp",
+        "c",
+        "go",
+        "rs",
+        "php",
+        "rb",
+        "cs",
+        "swift",
+        "kt",
+        "vue",
+      ];
+      const configExtensions = [
+        "json",
+        "yml",
+        "yaml",
+        "xml",
+        "ini",
+        "conf",
+        "config",
+      ];
+      const docExtensions = ["md", "txt", "rst", "adoc"];
 
       if (codeExtensions.includes(ext)) {
         stats.code++;
@@ -275,61 +468,79 @@ const getFileStats = (node: FileTreeNode) => {
 };
 
 // 获取所有可见的文件节点（按显示顺序）
-const getAllVisibleNodes = (node: FileTreeNode, result: FileTreeNode[] = []): FileTreeNode[] => {
-  if (node.type === 'file' || node.children) {
+const getAllVisibleNodes = (
+  node: FileTreeNode,
+  result: FileTreeNode[] = []
+): FileTreeNode[] => {
+  if (node.type === "file" || node.children) {
     result.push(node);
   }
-  
-  if (node.type === 'folder' && node.expanded && node.children) {
+
+  if (node.type === "folder" && node.expanded && node.children) {
     for (const child of node.children) {
       getAllVisibleNodes(child, result);
     }
   }
-  
+
   return result;
 };
 
 // 批量选择范围内的节点
-const selectNodeRange = (startNode: FileTreeNode, endNode: FileTreeNode, allNodes: FileTreeNode[], selected: boolean) => {
-  const startIndex = allNodes.findIndex(node => node.path === startNode.path);
-  const endIndex = allNodes.findIndex(node => node.path === endNode.path);
-  
+const selectNodeRange = (
+  startNode: FileTreeNode,
+  endNode: FileTreeNode,
+  allNodes: FileTreeNode[],
+  selected: boolean
+) => {
+  const startIndex = allNodes.findIndex((node) => node.path === startNode.path);
+  const endIndex = allNodes.findIndex((node) => node.path === endNode.path);
+
   if (startIndex === -1 || endIndex === -1) return;
-  
+
   const minIndex = Math.min(startIndex, endIndex);
   const maxIndex = Math.max(startIndex, endIndex);
-  
+
   for (let i = minIndex; i <= maxIndex; i++) {
     const node = allNodes[i];
-    if (node.type === 'file') {
+    if (node.type === "file") {
       node.selected = selected;
-    } else if (node.type === 'folder') {
+    } else if (node.type === "folder") {
       toggleNodeSelection(node, selected);
     }
   }
 };
 
 // FileTreeNodeComponent - 单独的组件来处理每个节点
-const FileTreeNodeComponent = ({ 
-  node, 
-  depth, 
-  onToggleSelection, 
+const FileTreeNodeComponent = ({
+  node,
+  depth,
+  onToggleSelection,
   onToggleExpansion,
   onShiftClick,
-  isLastClicked
+  isLastClicked,
 }: {
   node: FileTreeNode;
   depth: number;
-  onToggleSelection: (node: FileTreeNode, isShiftClick: boolean, event: React.MouseEvent) => void;
+  onToggleSelection: (
+    node: FileTreeNode,
+    isShiftClick: boolean,
+    event: React.MouseEvent
+  ) => void;
   onToggleExpansion: (node: FileTreeNode) => void;
   onShiftClick: (node: FileTreeNode, selected: boolean) => void;
   isLastClicked: boolean;
 }) => {
   const checkboxRef = useRef<HTMLInputElement>(null);
-  
-  const isPartiallySelected = node.type === 'folder' && node.children && 
-    node.children.some(child => child.selected) && 
-    !node.children.every(child => child.selected || (child.type === 'folder' && child.children?.every(c => !c.selected)));
+
+  const isPartiallySelected =
+    node.type === "folder" &&
+    node.children &&
+    node.children.some((child) => child.selected) &&
+    !node.children.every(
+      (child) =>
+        child.selected ||
+        (child.type === "folder" && child.children?.every((c) => !c.selected))
+    );
 
   // 使用 useEffect 来设置 indeterminate 状态
   useEffect(() => {
@@ -347,33 +558,35 @@ const FileTreeNodeComponent = ({
       <div
         className={`
           flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors
-          ${node.selected && !isPartiallySelected ? 'bg-blue-50' : ''}
-          ${isLastClicked ? 'ring-2 ring-blue-300 ring-opacity-50' : ''}
+          ${node.selected && !isPartiallySelected ? "bg-blue-50" : ""}
+          ${isLastClicked ? "ring-2 ring-blue-300 ring-opacity-50" : ""}
         `}
         style={{ paddingLeft: `${depth * 20 + 12}px` }}
       >
-        {node.type === 'folder' && node.children && node.children.length > 0 && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleExpansion(node);
-            }}
-            className="p-1 hover:bg-gray-200 rounded"
-          >
-            {node.expanded ? (
-              <ChevronDown className="h-3 w-3 text-gray-500" />
-            ) : (
-              <ChevronRight className="h-3 w-3 text-gray-500" />
-            )}
-          </button>
-        )}
-        
+        {node.type === "folder" &&
+          node.children &&
+          node.children.length > 0 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleExpansion(node);
+              }}
+              className="p-1 hover:bg-gray-200 rounded"
+            >
+              {node.expanded ? (
+                <ChevronDown className="h-3 w-3 text-gray-500" />
+              ) : (
+                <ChevronRight className="h-3 w-3 text-gray-500" />
+              )}
+            </button>
+          )}
+
         <div
           className="flex items-center space-x-3 flex-1 min-w-0"
           onClick={handleClick}
         >
           <div className="relative">
-            <Checkbox 
+            <Checkbox
               checked={node.selected && !isPartiallySelected}
               onChange={() => handleClick({} as React.MouseEvent)}
             />
@@ -386,29 +599,35 @@ const FileTreeNodeComponent = ({
               readOnly
             />
           </div>
-          
+
           <div className="flex items-center space-x-3 flex-1 min-w-0">
             <div className="flex-shrink-0">
-              {node.type === 'folder' ? (
-                node.expanded ? <FolderOpen className="h-4 w-4 text-blue-500" /> : <Folder className="h-4 w-4 text-blue-500" />
+              {node.type === "folder" ? (
+                node.expanded ? (
+                  <FolderOpen className="h-4 w-4 text-blue-500" />
+                ) : (
+                  <Folder className="h-4 w-4 text-blue-500" />
+                )
+              ) : node.extension ? (
+                getFileIcon(node.extension)
               ) : (
-                node.extension ? getFileIcon(node.extension) : <FileText className="h-4 w-4 text-gray-500" />
+                <FileText className="h-4 w-4 text-gray-500" />
               )}
             </div>
-            
+
             <div className="flex-1 min-w-0">
               <div className="flex items-center space-x-2">
                 <p className="text-sm font-medium text-gray-900 truncate">
                   {node.name}
                 </p>
-                {node.type === 'file' && node.extension && (
+                {node.type === "file" && node.extension && (
                   <Badge variant="secondary" className="text-xs">
                     {node.extension.toUpperCase()}
                   </Badge>
                 )}
               </div>
-              
-              {node.type === 'file' && (
+
+              {node.type === "file" && (
                 <p className="text-xs text-gray-500">
                   {formatFileSize(node.size || 0)}
                 </p>
@@ -422,9 +641,9 @@ const FileTreeNodeComponent = ({
         </div>
       </div>
 
-      {node.type === 'folder' && node.expanded && node.children && (
+      {node.type === "folder" && node.expanded && node.children && (
         <div>
-          {node.children.map(child => 
+          {node.children.map((child) => (
             <FileTreeNodeComponent
               key={child.path}
               node={child}
@@ -434,17 +653,42 @@ const FileTreeNodeComponent = ({
               onShiftClick={onShiftClick}
               isLastClicked={isLastClicked && child.path === node.path}
             />
-          )}
+          ))}
         </div>
       )}
     </div>
   );
 };
 
-export default function AnalysisConfig({ selectedFiles, onStartAnalysis, onBack }: AnalysisConfigProps) {
-  const [analysisMode, setAnalysisMode] = useState<'overall' | 'individual'>('overall');
-  const [fileTree, setFileTree] = useState<FileTreeNode>(() => buildFileTree(selectedFiles));
-  const [lastClickedNode, setLastClickedNode] = useState<FileTreeNode | null>(null);
+export default function AnalysisConfig({
+  selectedFiles,
+  onStartAnalysis,
+  onBack,
+}: AnalysisConfigProps) {
+  // 固定使用整体分析模式
+  const analysisMode = "overall";
+  const [fileTree, setFileTree] = useState<FileTreeNode>(() =>
+    buildFileTree(selectedFiles)
+  );
+  const [lastClickedNode, setLastClickedNode] = useState<FileTreeNode | null>(
+    null
+  );
+  const [uploadState, setUploadState] = useState<UploadState>({
+    isUploading: false,
+    progress: 0,
+    error: null,
+    success: false,
+  });
+  const [repositoryName, setRepositoryName] = useState<string>(() => {
+    // 从文件路径中提取仓库名称
+    if (selectedFiles.length > 0) {
+      const firstFile = selectedFiles[0];
+      const relativePath = firstFile.webkitRelativePath || firstFile.name;
+      const rootFolder = relativePath.split("/")[0];
+      return rootFolder || "uploaded-repository";
+    }
+    return "uploaded-repository";
+  });
 
   // 更新文件夹选择状态
   const updateTreeSelection = (tree: FileTreeNode) => {
@@ -452,31 +696,43 @@ export default function AnalysisConfig({ selectedFiles, onStartAnalysis, onBack 
     setFileTree({ ...tree });
   };
 
-  const handleShiftClick = useCallback((targetNode: FileTreeNode, selected: boolean) => {
-    if (lastClickedNode) {
-      const allVisibleNodes = getAllVisibleNodes(fileTree).filter(node => node.type === 'file');
-      selectNodeRange(lastClickedNode, targetNode, allVisibleNodes, selected);
-      updateTreeSelection(fileTree);
-    }
-  }, [lastClickedNode, fileTree]);
+  const handleShiftClick = useCallback(
+    (targetNode: FileTreeNode, selected: boolean) => {
+      if (lastClickedNode) {
+        const allVisibleNodes = getAllVisibleNodes(fileTree).filter(
+          (node) => node.type === "file"
+        );
+        selectNodeRange(lastClickedNode, targetNode, allVisibleNodes, selected);
+        updateTreeSelection(fileTree);
+      }
+    },
+    [lastClickedNode, fileTree]
+  );
 
-  const toggleFileSelection = useCallback((targetNode: FileTreeNode, isShiftClick: boolean, event: React.MouseEvent) => {
-    if (isShiftClick && lastClickedNode && targetNode.type === 'file') {
-      // Shift+点击：范围选择
-      const newSelected = !targetNode.selected;
-      handleShiftClick(targetNode, newSelected);
-    } else {
-      // 普通点击：单个切换
-      const newSelected = !targetNode.selected;
-      toggleNodeSelection(targetNode, newSelected);
-      updateTreeSelection(fileTree);
-    }
-    
-    // 只有在点击文件时才更新lastClickedNode
-    if (targetNode.type === 'file') {
-      setLastClickedNode(targetNode);
-    }
-  }, [lastClickedNode, handleShiftClick, fileTree]);
+  const toggleFileSelection = useCallback(
+    (
+      targetNode: FileTreeNode,
+      isShiftClick: boolean,
+      event: React.MouseEvent
+    ) => {
+      if (isShiftClick && lastClickedNode && targetNode.type === "file") {
+        // Shift+点击：范围选择
+        const newSelected = !targetNode.selected;
+        handleShiftClick(targetNode, newSelected);
+      } else {
+        // 普通点击：单个切换
+        const newSelected = !targetNode.selected;
+        toggleNodeSelection(targetNode, newSelected);
+        updateTreeSelection(fileTree);
+      }
+
+      // 只有在点击文件时才更新lastClickedNode
+      if (targetNode.type === "file") {
+        setLastClickedNode(targetNode);
+      }
+    },
+    [lastClickedNode, handleShiftClick, fileTree]
+  );
 
   const toggleFolderExpansion = (targetNode: FileTreeNode) => {
     targetNode.expanded = !targetNode.expanded;
@@ -490,13 +746,93 @@ export default function AnalysisConfig({ selectedFiles, onStartAnalysis, onBack 
     updateTreeSelection(fileTree);
   };
 
-  const handleStartAnalysis = () => {
+  const handleStartAnalysis = async () => {
     const selectedFilePaths = getSelectedFiles(fileTree);
-    
-    onStartAnalysis({
-      mode: analysisMode,
-      selectedFiles: selectedFilePaths
+
+    // 重置上传状态
+    setUploadState({
+      isUploading: true,
+      progress: 0,
+      error: null,
+      success: false,
     });
+
+    try {
+      // 过滤出选中的文件
+      const filesToUpload: File[] = [];
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        const filePath = file.webkitRelativePath || file.name;
+        if (selectedFilePaths.includes(filePath)) {
+          filesToUpload.push(file);
+        }
+      }
+
+      // 创建新的 FileList，保持 webkitRelativePath 属性
+      const dataTransfer = new DataTransfer();
+      filesToUpload.forEach((originalFile) => {
+        // 创建新的 File 对象，保持原有属性
+        const newFile = new File([originalFile], originalFile.name, {
+          type: originalFile.type,
+          lastModified: originalFile.lastModified,
+        });
+
+        // 保持 webkitRelativePath 属性
+        if (originalFile.webkitRelativePath) {
+          Object.defineProperty(newFile, "webkitRelativePath", {
+            value: originalFile.webkitRelativePath,
+            writable: false,
+            configurable: false,
+          });
+        }
+
+        dataTransfer.items.add(newFile);
+      });
+      const filteredFileList = dataTransfer.files;
+
+      // 调试：打印文件路径信息
+      console.log(
+        "准备上传的文件:",
+        Array.from(filteredFileList).map((file) => ({
+          name: file.name,
+          webkitRelativePath: (file as any).webkitRelativePath,
+          size: file.size,
+        }))
+      );
+
+      // 模拟上传进度
+      setUploadState((prev) => ({ ...prev, progress: 20 }));
+
+      // 调用上传 API
+      const uploadResult = await api.uploadRepository(
+        filteredFileList,
+        repositoryName
+      );
+
+      if (uploadResult.status === "success") {
+        setUploadState((prev) => ({ ...prev, progress: 100, success: true }));
+
+        // 延迟一下显示成功状态，然后调用原始的分析回调
+        setTimeout(() => {
+          onStartAnalysis({
+            mode: analysisMode,
+            selectedFiles: selectedFilePaths,
+            repositoryId: uploadResult.repository_id,
+            repositoryName: uploadResult.repository_name,
+          });
+        }, 1000);
+      } else {
+        throw new Error(uploadResult.message || "上传失败");
+      }
+    } catch (error) {
+      console.error("上传失败:", error);
+      setUploadState({
+        isUploading: false,
+        progress: 0,
+        error: error instanceof Error ? error.message : "上传失败，请重试",
+        success: false,
+      });
+    }
   };
 
   const stats = getFileStats(fileTree);
@@ -513,92 +849,114 @@ export default function AnalysisConfig({ selectedFiles, onStartAnalysis, onBack 
               </Button>
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">分析配置</h1>
-                <p className="text-gray-600">选择分析模式并筛选需要分析的文件</p>
+                <p className="text-gray-600">筛选需要分析的文件</p>
               </div>
             </div>
 
             {/* Header右侧操作区 */}
             <div className="flex items-center space-x-4">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={toggleSelectAll}
-              >
-                {stats.selected === stats.total ? '取消全选' : '全选'}
+              <Button variant="outline" size="sm" onClick={toggleSelectAll}>
+                {stats.selected === stats.total ? "取消全选" : "全选"}
               </Button>
-              
-              <Button 
+
+              <Button
                 onClick={handleStartAnalysis}
-                disabled={stats.selected === 0}
+                disabled={stats.selected === 0 || uploadState.isUploading}
                 className="px-8"
               >
-                <Search className="h-4 w-4 mr-2" />
-                开始分析 ({stats.selected})
+                {uploadState.isUploading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    上传中... ({uploadState.progress}%)
+                  </>
+                ) : uploadState.success ? (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 mr-2 text-green-500" />
+                    上传成功
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    开始分析 ({stats.selected})
+                  </>
+                )}
               </Button>
+
+              {/* 上传状态信息 */}
+              {uploadState.error && (
+                <div className="mt-2 flex items-center text-sm text-red-600">
+                  <AlertCircle className="h-4 w-4 mr-1" />
+                  {uploadState.error}
+                </div>
+              )}
+
+              {uploadState.isUploading && (
+                <div className="mt-2 text-sm text-gray-600">
+                  <div className="flex items-center mb-1">
+                    <Upload className="h-4 w-4 mr-1" />
+                    正在上传到仓库: {repositoryName}
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${uploadState.progress}%` }}
+                    ></div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* 分析模式配置栏 */}
+      {/* 统计信息栏 */}
       <div className="flex-shrink-0 p-4 bg-white/60 backdrop-blur-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-8">
-              {/* 分析模式选择 */}
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-2">
-                  <Settings className="h-5 w-5 text-blue-600" />
-                  <h3 className="font-semibold text-gray-900">分析模式</h3>
-                </div>
-                
-                <RadioGroup 
-                  value={analysisMode} 
-                  onValueChange={(value: 'overall' | 'individual') => setAnalysisMode(value)}
-                  className="flex items-center space-x-6"
-                >
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="overall" id="overall" />
-                    <Label htmlFor="overall" className="font-medium">
-                      代码整体分析
-                    </Label>
-                  </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="individual" id="individual" />
-                    <Label htmlFor="individual" className="font-medium">
-                      代码逐个解析
-                    </Label>
-                  </div>
-                </RadioGroup>
-              </div>
-            </div>
-
+          <div className="flex items-center justify-end">
             {/* 统计信息 */}
             <div className="flex items-center space-x-6">
+              {/* 仓库信息 */}
+              <div className="flex items-center space-x-2 px-3 py-1 bg-purple-50 rounded-lg">
+                <Database className="h-4 w-4 text-purple-600" />
+                <span className="text-sm font-medium text-purple-700">
+                  仓库: {repositoryName}
+                </span>
+              </div>
+
               <div className="flex items-center space-x-4">
                 <div className="flex items-center space-x-2 px-3 py-1 bg-blue-50 rounded-lg">
                   <Code className="h-4 w-4 text-blue-600" />
-                  <span className="text-sm font-medium text-blue-700">代码 {stats.code}</span>
+                  <span className="text-sm font-medium text-blue-700">
+                    代码 {stats.code}
+                  </span>
                 </div>
-                
+
                 <div className="flex items-center space-x-2 px-3 py-1 bg-green-50 rounded-lg">
                   <Settings className="h-4 w-4 text-green-600" />
-                  <span className="text-sm font-medium text-green-700">配置 {stats.config}</span>
+                  <span className="text-sm font-medium text-green-700">
+                    配置 {stats.config}
+                  </span>
                 </div>
-                
+
                 <div className="flex items-center space-x-2 px-3 py-1 bg-purple-50 rounded-lg">
                   <FileText className="h-4 w-4 text-purple-600" />
-                  <span className="text-sm font-medium text-purple-700">文档 {stats.docs}</span>
+                  <span className="text-sm font-medium text-purple-700">
+                    文档 {stats.docs}
+                  </span>
                 </div>
               </div>
 
               <Separator orientation="vertical" className="h-6" />
 
               <div className="text-sm text-gray-600">
-                <span className="font-medium">{formatFileSize(stats.totalSize)}</span>
+                <span className="font-medium">
+                  {formatFileSize(stats.totalSize)}
+                </span>
                 <span className="mx-2">·</span>
-                <span className="font-medium">{stats.selected}/{stats.total}</span> 文件
+                <span className="font-medium">
+                  {stats.selected}/{stats.total}
+                </span>{" "}
+                文件
               </div>
             </div>
           </div>
@@ -618,7 +976,7 @@ export default function AnalysisConfig({ selectedFiles, onStartAnalysis, onBack 
                     {stats.selected} 个文件已选择
                   </Badge>
                 </div>
-                
+
                 <div className="flex items-center space-x-2 text-sm text-gray-500">
                   <Info className="h-4 w-4" />
                   <span>按住 Shift 点击可批量选择</span>
@@ -630,17 +988,18 @@ export default function AnalysisConfig({ selectedFiles, onStartAnalysis, onBack 
               <ScrollArea className="h-full">
                 <div className="p-4">
                   <div className="space-y-1">
-                    {fileTree.children && fileTree.children.map(child => 
-                      <FileTreeNodeComponent
-                        key={child.path}
-                        node={child}
-                        depth={0}
-                        onToggleSelection={toggleFileSelection}
-                        onToggleExpansion={toggleFolderExpansion}
-                        onShiftClick={handleShiftClick}
-                        isLastClicked={lastClickedNode?.path === child.path}
-                      />
-                    )}
+                    {fileTree.children &&
+                      fileTree.children.map((child) => (
+                        <FileTreeNodeComponent
+                          key={child.path}
+                          node={child}
+                          depth={0}
+                          onToggleSelection={toggleFileSelection}
+                          onToggleExpansion={toggleFolderExpansion}
+                          onShiftClick={handleShiftClick}
+                          isLastClicked={lastClickedNode?.path === child.path}
+                        />
+                      ))}
                   </div>
                 </div>
               </ScrollArea>

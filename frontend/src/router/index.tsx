@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import Layout from "../components/Layout";
 import UploadPage from "../pages/UploadPage";
+import ConfigPage from "../pages/ConfigPage";
 import AnalysisPage from "../pages/AnalysisPage";
 import DeepWikiPage from "../pages/DeepWikiPage";
 import BackgroundPage from "../pages/BackgroundPage";
@@ -19,6 +20,10 @@ export const router = createBrowserRouter([
       {
         path: "upload",
         element: <UploadPage />,
+      },
+      {
+        path: "config",
+        element: <ConfigPage />,
       },
       {
         path: "analysis",

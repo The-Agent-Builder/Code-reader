@@ -158,11 +158,11 @@ class SaveToMySQLNode(Node):
 
             # 1) upsert Repository
             repo = Repository(
+                user_id=1,  # 默认用户ID，可以根据需要调整
                 name=repo_info.get("name") or repo_info.get("full_name", "unknown").split("/")[-1],
                 full_name=repo_info.get("full_name"),
-                url=repo_url,
-                description=repo_info.get("description"),
-                language=(repo_info.get("language") if isinstance(repo_info.get("language"), str) else None),
+                local_path=shared.get("local_path", ""),  # 从共享数据获取本地路径
+                status=1,  # 默认状态为存在
             )
             session.add(repo)
             session.flush()  # 获取 repo.id
@@ -193,17 +193,14 @@ class SaveToMySQLNode(Node):
 
             task = AnalysisTask(
                 repository_id=repo.id,
-                status="completed",
-                start_time=analysis_time,
-                end_time=analysis_time,
                 total_files=total_files,
                 successful_files=successful_files,
                 failed_files=failed_files,
-                analysis_config={
-                    "vectorization": bool(shared.get("vectorstore_index")),
-                    "llm_batch_size": shared.get("llm_batch_size"),
-                    "source": "local_files" if self.use_local_files else "flow_data",
-                },
+                code_lines=0,  # 可以根据实际需要计算
+                module_count=0,  # 可以根据实际需要计算
+                status="completed",
+                start_time=analysis_time,
+                end_time=analysis_time,
             )
             session.add(task)
             session.flush()

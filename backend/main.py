@@ -11,9 +11,29 @@ import os
 from dotenv import load_dotenv
 from database import test_database_connection, get_database_info
 from routers import repository_router
+from config import settings
+from pathlib import Path
 
 # 加载环境变量
 load_dotenv()
+
+
+# 确保必要的目录存在
+def ensure_directories():
+    """确保必要的目录存在"""
+    directories = [
+        settings.LOCAL_REPO_PATH,
+        settings.RESULTS_PATH,
+        settings.VECTORSTORE_PATH,
+    ]
+
+    for directory in directories:
+        Path(directory).mkdir(parents=True, exist_ok=True)
+        print(f"✓ 确保目录存在: {directory}")
+
+
+# 创建目录
+ensure_directories()
 
 # 创建FastAPI应用实例
 app = FastAPI(
@@ -72,10 +92,33 @@ async def root():
         "health": "/health",
         "database_test": "/database/test",
         "database_info": "/database/info",
-        "repository_files": "/api/repository/files/{task_id}",
-        "analysis_items": "/api/repository/analysis-items/{file_analysis_id}",
-        "repositories": "/api/repository/repositories?name={name}",
-        "analysis_tasks": "/api/repository/analysis-tasks/{repository_id}",
+        "api_endpoints": {
+            "repositories": {
+                "get_by_id": "/api/repository/repositories/{repository_id}",
+                "create": "/api/repository/repositories",
+                "update": "/api/repository/repositories/{repository_id}",
+                "delete": "/api/repository/repositories/{repository_id}",
+                "get_by_name": "/api/repository/repositories?name={name}",
+            },
+            "analysis": {
+                "get_tasks": "/api/repository/analysis-tasks/{repository_id}",
+                "create_task": "/api/repository/analysis-tasks",
+                "update_task": "/api/repository/analysis-tasks/{task_id}",
+                "delete_task": "/api/repository/analysis-tasks/{task_id}",
+                "files": "/api/repository/files/{task_id}",
+                "get_file_analysis": "/api/repository/file-analysis/{file_id}?task_id={task_id}",
+                "create_file_analysis": "/api/repository/file-analysis",
+                "update_file_analysis": "/api/repository/file-analysis/{file_id}",
+                "delete_file_analysis": "/api/repository/file-analysis/{file_id}",
+                "get_analysis_items": "/api/repository/analysis-items/{file_analysis_id}",
+                "create_analysis_item": "/api/repository/analysis-items",
+                "update_analysis_item": "/api/repository/analysis-items/{item_id}",
+                "delete_analysis_item": "/api/repository/analysis-items/{item_id}",
+            },
+            "upload": {
+                "repository": "/api/repository/upload",
+            },
+        },
     }
 
 
