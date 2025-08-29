@@ -812,15 +812,40 @@ export default function AnalysisConfig({
       if (uploadResult.status === "success") {
         setUploadState((prev) => ({ ...prev, progress: 100, success: true }));
 
-        // 延迟一下显示成功状态，然后调用原始的分析回调
-        setTimeout(() => {
-          onStartAnalysis({
-            mode: analysisMode,
-            selectedFiles: selectedFilePaths,
-            repositoryId: uploadResult.repository_id,
-            repositoryName: uploadResult.repository_name,
+        // 前端主动创建分析任务
+        try {
+          const taskResult = await api.createAnalysisTask({
+            repository_id: uploadResult.repository_id,
+            total_files: selectedFilePaths.length,
+            status: "pending",
           });
-        }, 1000);
+
+          if (taskResult.status === "success") {
+            // 将任务信息保存到 sessionStorage
+            const taskInfo = {
+              taskId: taskResult.task.id,
+              repositoryId: uploadResult.repository_id,
+              repositoryName: uploadResult.repository_name,
+              fileList: selectedFilePaths,
+            };
+            sessionStorage.setItem("currentTaskInfo", JSON.stringify(taskInfo));
+
+            // 延迟一下显示成功状态，然后调用原始的分析回调
+            setTimeout(() => {
+              onStartAnalysis({
+                mode: analysisMode,
+                selectedFiles: selectedFilePaths,
+                repositoryId: uploadResult.repository_id,
+                repositoryName: uploadResult.repository_name,
+              });
+            }, 1000);
+          } else {
+            throw new Error(taskResult.message || "创建分析任务失败");
+          }
+        } catch (taskError) {
+          console.error("创建分析任务失败:", taskError);
+          throw new Error("创建分析任务失败，请重试");
+        }
       } else {
         throw new Error(uploadResult.message || "上传失败");
       }

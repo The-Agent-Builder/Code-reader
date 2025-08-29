@@ -1025,12 +1025,15 @@ class RepositoryService:
                 }
 
             # 创建新仓库记录
+            current_time = datetime.now(timezone.utc)
             new_repository = Repository(
                 user_id=repository_data.get("user_id", 1),  # 默认用户ID为1
                 name=repository_data["name"],
                 full_name=repository_data.get("full_name"),
                 local_path=repository_data["local_path"],
                 status=repository_data.get("status", 1),
+                created_at=current_time,
+                updated_at=current_time,
             )
 
             db.add(new_repository)
@@ -1566,7 +1569,30 @@ class AnalysisTaskService:
                     "repository_id": task_data["repository_id"],
                 }
 
+            # 检查是否有pending或running状态的任务
+            existing_pending_tasks = (
+                db.query(AnalysisTask).filter(AnalysisTask.status.in_(["pending", "running"])).count()
+            )
+
             # 创建新任务记录
+            # 如果传入了start_time，使用传入的时间；否则使用当前时间
+            start_time = task_data.get("start_time")
+            if start_time is None:
+                start_time = datetime.now(timezone.utc)
+            elif isinstance(start_time, str):
+                # 如果是字符串，尝试解析为datetime对象
+                try:
+                    start_time = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+                except ValueError:
+                    start_time = datetime.now(timezone.utc)
+
+            # 根据队列情况决定任务状态
+            # 如果有pending或running任务，新任务自动设为pending状态
+            task_status = "pending"
+            if existing_pending_tasks == 0:
+                # 如果没有其他任务在队列中，可以直接设为running状态
+                task_status = task_data.get("status", "running")
+
             new_task = AnalysisTask(
                 repository_id=task_data["repository_id"],
                 total_files=task_data.get("total_files", 0),
@@ -1574,21 +1600,31 @@ class AnalysisTaskService:
                 failed_files=task_data.get("failed_files", 0),
                 code_lines=task_data.get("code_lines", 0),
                 module_count=task_data.get("module_count", 0),
-                status=task_data.get("status", "pending"),
+                status=task_status,
+                start_time=start_time,
                 end_time=task_data.get("end_time"),
+                task_index=task_data.get("task_index"),
             )
 
             db.add(new_task)
             db.commit()
             db.refresh(new_task)
 
-            logger.info(f"成功创建分析任务: ID {new_task.id}, 仓库ID {new_task.repository_id}")
+            logger.info(f"成功创建分析任务: ID {new_task.id}, 仓库ID {new_task.repository_id}, 状态: {task_status}")
 
-            return {
+            # 返回结果包含队列信息
+            result = {
                 "status": "success",
                 "message": "分析任务创建成功",
                 "task": new_task.to_dict(),
+                "queue_info": {
+                    "is_queued": task_status == "pending",
+                    "queue_position": existing_pending_tasks + 1 if task_status == "pending" else 0,
+                    "total_pending": existing_pending_tasks + (1 if task_status == "pending" else 0),
+                },
             }
+
+            return result
 
         except SQLAlchemyError as e:
             db.rollback()
@@ -1755,6 +1791,191 @@ class AnalysisTaskService:
             if should_close:
                 db.close()
 
+    @staticmethod
+    def can_start_task(task_id: int, db: Session = None) -> dict:
+        """
+        判断指定任务是否可以开启
+
+        判断条件：
+        1. 当前没有状态为 running 的任务
+        2. 指定的 task_id 在状态为 pending 的任务中是 start_time 最早的
+
+        Args:
+            task_id: 要判断的任务ID
+            db: 数据库会话（可选）
+
+        Returns:
+            dict: 包含判断结果的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            # 检查是否存在 running 状态的任务
+            running_tasks_count = db.query(AnalysisTask).filter(AnalysisTask.status == "running").count()
+
+            if running_tasks_count > 0:
+                return {
+                    "status": "success",
+                    "message": "当前有正在运行的任务，无法开启新任务",
+                    "task_id": task_id,
+                    "can_start": False,
+                    "reason": "有正在运行的任务",
+                    "running_tasks_count": running_tasks_count,
+                }
+
+            # 查找指定的任务
+            target_task = db.query(AnalysisTask).filter(AnalysisTask.id == task_id).first()
+
+            if not target_task:
+                return {
+                    "status": "error",
+                    "message": f"未找到ID为 {task_id} 的任务",
+                    "task_id": task_id,
+                    "can_start": False,
+                }
+
+            # 检查任务状态是否为 pending
+            if target_task.status != "pending":
+                return {
+                    "status": "success",
+                    "message": f"任务状态为 {target_task.status}，不是 pending 状态",
+                    "task_id": task_id,
+                    "can_start": False,
+                    "reason": f"任务状态不是pending，当前状态：{target_task.status}",
+                    "current_status": target_task.status,
+                }
+
+            # 查找所有 pending 状态的任务，按 start_time 升序排列
+            pending_tasks = (
+                db.query(AnalysisTask)
+                .filter(AnalysisTask.status == "pending")
+                .order_by(AnalysisTask.start_time.asc())
+                .all()
+            )
+
+            if not pending_tasks:
+                return {
+                    "status": "success",
+                    "message": "没有pending状态的任务",
+                    "task_id": task_id,
+                    "can_start": False,
+                    "reason": "没有pending状态的任务",
+                }
+
+            # 检查指定任务是否是最早的 pending 任务
+            earliest_task = pending_tasks[0]
+
+            if earliest_task.id == task_id:
+                return {
+                    "status": "success",
+                    "message": "任务可以开启",
+                    "task_id": task_id,
+                    "can_start": True,
+                    "reason": "没有运行中的任务且该任务是最早的pending任务",
+                    "earliest_start_time": earliest_task.start_time.isoformat() if earliest_task.start_time else None,
+                    "pending_tasks_count": len(pending_tasks),
+                }
+            else:
+                return {
+                    "status": "success",
+                    "message": "任务不能开启，不是最早的pending任务",
+                    "task_id": task_id,
+                    "can_start": False,
+                    "reason": "不是最早的pending任务",
+                    "earliest_task_id": earliest_task.id,
+                    "earliest_start_time": earliest_task.start_time.isoformat() if earliest_task.start_time else None,
+                    "current_task_start_time": target_task.start_time.isoformat() if target_task.start_time else None,
+                    "pending_tasks_count": len(pending_tasks),
+                }
+
+        except Exception as e:
+            logger.error(f"判断任务是否可以开启时发生错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": f"判断任务是否可以开启时发生错误: {str(e)}",
+                "task_id": task_id,
+                "can_start": False,
+            }
+        finally:
+            if should_close:
+                db.close()
+
+    @staticmethod
+    def get_queue_status(db: Session = None) -> dict:
+        """
+        获取任务队列状态
+
+        Args:
+            db: 数据库会话（可选）
+
+        Returns:
+            dict: 包含队列状态信息的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            # 获取所有pending状态的任务，按创建时间排序
+            pending_tasks = (
+                db.query(AnalysisTask)
+                .filter(AnalysisTask.status == "pending")
+                .order_by(AnalysisTask.start_time.asc())
+                .all()
+            )
+
+            # 获取正在运行的任务数量
+            running_tasks = db.query(AnalysisTask).filter(AnalysisTask.status == "running").count()
+
+            # 计算队列信息
+            total_pending = len(pending_tasks)
+
+            # 预估等待时间（假设每个任务平均需要15分钟）
+            average_task_duration = 15  # 分钟
+            estimated_wait_time = total_pending * average_task_duration
+
+            # 如果有正在运行的任务，减少等待时间
+            if running_tasks > 0:
+                estimated_wait_time = max(0, estimated_wait_time - (running_tasks * 5))
+
+            logger.info(f"队列状态查询成功: pending={total_pending}, running={running_tasks}")
+
+            return {
+                "status": "success",
+                "message": "队列状态获取成功",
+                "queue_info": {
+                    "total_pending": total_pending,
+                    "running_tasks": running_tasks,
+                    "estimated_wait_time_minutes": estimated_wait_time,
+                    "has_queue": total_pending > 0,
+                    "pending_task_ids": [task.id for task in pending_tasks],
+                },
+            }
+
+        except SQLAlchemyError as e:
+            logger.error(f"数据库操作失败: {str(e)}")
+            return {
+                "status": "error",
+                "message": "数据库操作失败",
+                "error": str(e),
+            }
+        except Exception as e:
+            logger.error(f"获取队列状态时发生未知错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "获取队列状态时发生未知错误",
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
+
 
 class UploadService:
     """文件上传服务类"""
@@ -1774,6 +1995,7 @@ class UploadService:
         """
         import os
         import shutil
+        import hashlib
         from pathlib import Path
         from config import settings
 
@@ -1800,11 +2022,40 @@ class UploadService:
                     "repository_name": repository_name,
                 }
 
-            # 创建本地存储目录
-            repo_path = Path(settings.LOCAL_REPO_PATH) / clean_repo_name
+            # 计算文件内容的MD5哈希值来生成唯一的目录名
+            # 添加时间戳和随机数确保每次上传都生成不同的MD5
+            import time
+            import random
+
+            md5_hash = hashlib.md5()
+
+            # 添加当前时间戳（纳秒级精度）
+            timestamp = str(time.time_ns())
+            md5_hash.update(timestamp.encode("utf-8"))
+
+            # 添加随机数增加唯一性
+            random_num = str(random.randint(100000, 999999))
+            md5_hash.update(random_num.encode("utf-8"))
+
+            # 先读取所有文件内容来计算MD5
+            file_contents = []
+            for file in files:
+                content = await file.read()
+                file_contents.append((file.filename, content))
+                md5_hash.update(content)
+                # 重置文件指针，以便后续读取
+                await file.seek(0)
+
+            # 生成MD5目录名
+            md5_dir_name = md5_hash.hexdigest()
+            logger.info(f"生成MD5目录名: {md5_dir_name} (基于时间戳: {timestamp}, 随机数: {random_num})")
+
+            # 创建本地存储目录，使用MD5作为目录名
+            repo_path = Path(settings.LOCAL_REPO_PATH) / md5_dir_name
 
             # 如果目录已存在，先删除
             if repo_path.exists():
+                logger.info(f"删除已存在的MD5目录: {repo_path}")
                 shutil.rmtree(repo_path)
 
             repo_path.mkdir(parents=True, exist_ok=True)
@@ -1910,25 +2161,32 @@ class UploadService:
                     "failed_files": failed_files,
                 }
 
-            # 检查仓库是否已存在于数据库中
-            existing_repo = db.query(Repository).filter(Repository.name == clean_repo_name).first()
+            # 检查仓库是否已存在于数据库中（使用MD5目录名作为唯一标识）
+            existing_repo = db.query(Repository).filter(Repository.local_path == str(repo_path)).first()
+
+            current_time = datetime.now(timezone.utc)
 
             if existing_repo:
                 # 更新现有仓库信息
-                existing_repo.local_path = str(repo_path)
+                existing_repo.name = clean_repo_name  # 更新仓库名称
+                existing_repo.full_name = clean_repo_name
                 existing_repo.status = 1  # 设置为存在状态
-                existing_repo.updated_at = datetime.now(timezone.utc)
+                existing_repo.updated_at = current_time
                 repository = existing_repo
+                logger.info(f"更新已存在的仓库记录: {existing_repo.id}")
             else:
-                # 创建新的仓库记录
+                # 创建新的仓库记录，使用MD5目录名作为唯一标识
                 repository = Repository(
                     user_id=1,  # 默认用户ID
-                    name=clean_repo_name,
-                    full_name=clean_repo_name,
-                    local_path=str(repo_path),
+                    name=clean_repo_name,  # 使用原始仓库名称
+                    full_name=f"{clean_repo_name} (MD5: {md5_dir_name})",  # 包含MD5信息的完整名称
+                    local_path=str(repo_path),  # 使用MD5目录路径
                     status=1,
+                    created_at=current_time,
+                    updated_at=current_time,
                 )
                 db.add(repository)
+                logger.info(f"创建新的仓库记录，MD5目录: {md5_dir_name}")
 
             # 提交数据库更改
             db.commit()
@@ -1947,6 +2205,7 @@ class UploadService:
                 "repository_name": clean_repo_name,
                 "repository_id": repository.id,
                 "local_path": str(repo_path),
+                "md5_directory_name": md5_dir_name,  # 添加MD5目录名信息
                 "upload_summary": {
                     "total_files_uploaded": len(files),
                     "successful_files": len(saved_files),

@@ -176,6 +176,7 @@ class AnalysisTask(Base):
     status = Column(String(32), default="pending", index=True, comment="任务状态: pending/running/completed/failed")
     start_time = Column(DateTime, default=lambda: datetime.now(timezone.utc), comment="开始时间")
     end_time = Column(DateTime, comment="结束时间")
+    task_index = Column(String(255), index=True, comment="任务索引")
 
     # 注意：repository 关系可以通过 repository_id 外键访问
 
@@ -195,4 +196,5 @@ class AnalysisTask(Base):
             "status": self.status,
             "start_time": self.start_time.isoformat() if self.start_time else None,
             "end_time": self.end_time.isoformat() if self.end_time else None,
+            "task_index": self.task_index,
         }

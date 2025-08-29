@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS analysis_tasks (
   code_lines INT DEFAULT 0 COMMENT '代码行数',
   module_count INT DEFAULT 0 COMMENT '模块数量',
   status VARCHAR(32) DEFAULT 'pending' COMMENT '任务状态：pending/running/completed/failed',
+  task_index VARCHAR(255) NULL COMMENT '任务索引',
   start_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '开始时间',
   end_time DATETIME NULL COMMENT '结束时间',
 
@@ -42,6 +43,7 @@ CREATE TABLE IF NOT EXISTS analysis_tasks (
   INDEX idx_status (status),
   INDEX idx_start_time (start_time),
   INDEX idx_status_repo (status, repository_id),
+  INDEX idx_task_index (task_index),
 
   CONSTRAINT fk_task_repo FOREIGN KEY (repository_id)
     REFERENCES repositories(id) ON DELETE CASCADE

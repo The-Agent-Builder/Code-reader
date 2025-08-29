@@ -455,6 +455,7 @@ export class ApiService {
     repository_name: string;
     repository_id?: number;
     local_path?: string;
+    md5_directory_name?: string;
     upload_summary?: {
       total_files_uploaded: number;
       successful_files: number;
@@ -524,6 +525,184 @@ export class ApiService {
     console.log(`Upload response:`, result);
     return result;
   }
+
+  // 创建分析任务
+  async createAnalysisTask(taskData: {
+    repository_id: number;
+    total_files?: number;
+    successful_files?: number;
+    failed_files?: number;
+    code_lines?: number;
+    module_count?: number;
+    status?: string;
+    start_time?: string;
+    task_index?: string;
+  }): Promise<{
+    status: string;
+    message: string;
+    task: {
+      id: number;
+      repository_id: number;
+      total_files: number;
+      successful_files: number;
+      failed_files: number;
+      code_lines: number;
+      module_count: number;
+      status: string;
+      start_time: string;
+      end_time?: string;
+      task_index?: string;
+    };
+  }> {
+    const response = await fetch(
+      `${this.baseUrl}/api/repository/analysis-tasks`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(taskData),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log(`Create analysis task response:`, result);
+    return result;
+  }
+
+  // 更新分析任务状态
+  async updateAnalysisTask(
+    taskId: number,
+    updateData: {
+      status?: string;
+      successful_files?: number;
+      failed_files?: number;
+      code_lines?: number;
+      module_count?: number;
+      end_time?: string;
+      task_index?: string;
+    }
+  ): Promise<{
+    status: string;
+    message: string;
+    task: {
+      id: number;
+      repository_id: number;
+      total_files: number;
+      successful_files: number;
+      failed_files: number;
+      code_lines: number;
+      module_count: number;
+      status: string;
+      start_time: string;
+      end_time?: string;
+      task_index?: string;
+    };
+  }> {
+    const response = await fetch(
+      `${this.baseUrl}/api/repository/analysis-tasks/${taskId}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(updateData),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log(`Update analysis task response:`, result);
+    return result;
+  }
+
+  // 获取任务队列状态
+  async getQueueStatus(): Promise<{
+    status: string;
+    message: string;
+    queue_info: {
+      total_pending: number;
+      running_tasks: number;
+      estimated_wait_time_minutes: number;
+      has_queue: boolean;
+      pending_task_ids: number[];
+    };
+  }> {
+    const response = await fetch(
+      `${this.baseUrl}/api/repository/analysis-tasks/queue/status`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log(`Queue status response:`, result);
+    return result;
+  }
+
+  // 创建文件分析记录
+  async createFileAnalysis(fileData: {
+    task_id: number;
+    file_path: string;
+    language: string;
+    analysis_version: string;
+    status: string;
+    code_lines: number;
+    code_content: string;
+    file_analysis: string;
+    dependencies: string;
+    error_message: string;
+  }): Promise<{
+    status: string;
+    message: string;
+    file_analysis: {
+      id: number;
+      task_id: number;
+      file_path: string;
+      language: string;
+      analysis_version: string;
+      status: string;
+      code_lines: number;
+      code_content: string;
+      file_analysis: string;
+      dependencies: string;
+      analysis_timestamp: string;
+      error_message: string;
+    };
+  }> {
+    const response = await fetch(
+      `${this.baseUrl}/api/repository/file-analysis`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(fileData),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log(`Create file analysis response:`, result);
+    return result;
+  }
 }
 
 // 默认API服务实例
@@ -571,6 +750,31 @@ export const api = {
   // 上传相关
   uploadRepository: (files: FileList, repositoryName: string) =>
     apiService.uploadRepository(files, repositoryName),
+
+  // 分析任务相关
+  createAnalysisTask: (taskData: {
+    repository_id: number;
+    total_files?: number;
+    successful_files?: number;
+    failed_files?: number;
+    code_lines?: number;
+    module_count?: number;
+    status?: string;
+    start_time?: string;
+    task_index?: string;
+  }) => apiService.createAnalysisTask(taskData),
+  updateAnalysisTask: (
+    taskId: number,
+    updateData: Parameters<ApiService["updateAnalysisTask"]>[1]
+  ) => apiService.updateAnalysisTask(taskId, updateData),
+
+  // 文件分析相关
+  createFileAnalysis: (
+    fileData: Parameters<ApiService["createFileAnalysis"]>[0]
+  ) => apiService.createFileAnalysis(fileData),
+
+  // 队列相关
+  getQueueStatus: () => apiService.getQueueStatus(),
 };
 
 export default api;

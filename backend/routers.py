@@ -42,7 +42,9 @@ class AnalysisTaskCreate(BaseModel):
     code_lines: Optional[int] = Field(default=0, description="代码行数")
     module_count: Optional[int] = Field(default=0, description="模块数量")
     status: Optional[str] = Field(default="pending", description="任务状态：pending/running/completed/failed")
+    start_time: Optional[str] = Field(None, description="开始时间（ISO格式）")
     end_time: Optional[str] = Field(None, description="结束时间（ISO格式）")
+    task_index: Optional[str] = Field(None, description="任务索引")
 
 
 class AnalysisTaskUpdate(BaseModel):
@@ -55,7 +57,9 @@ class AnalysisTaskUpdate(BaseModel):
     code_lines: Optional[int] = Field(None, description="代码行数")
     module_count: Optional[int] = Field(None, description="模块数量")
     status: Optional[str] = Field(None, description="任务状态：pending/running/completed/failed")
+    start_time: Optional[str] = Field(None, description="开始时间（ISO格式）")
     end_time: Optional[str] = Field(None, description="结束时间（ISO格式）")
+    task_index: Optional[str] = Field(None, description="任务索引")
 
 
 class FileAnalysisCreate(BaseModel):
@@ -413,6 +417,86 @@ async def delete_analysis_task(
                 "status": "error",
                 "message": "删除分析任务时发生未知错误",
                 "task_id": task_id,
+                "error": str(e),
+            },
+        )
+
+
+@repository_router.get("/analysis-tasks/{task_id}/can-start")
+async def can_start_analysis_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    判断分析任务是否可以开启
+
+    判断指定的任务ID是否满足开启条件：
+    1. 当前没有状态为 running 的任务
+    2. 指定的 task_id 在状态为 pending 的任务中是 start_time 最早的
+
+    Args:
+        task_id: 要判断的任务ID
+        db: 数据库会话
+
+    Returns:
+        JSON响应包含判断结果：
+        - can_start: boolean，是否可以开启
+        - reason: string，判断原因
+        - 其他相关信息
+    """
+    try:
+        # 判断任务是否可以开启
+        result = AnalysisTaskService.can_start_task(task_id, db)
+
+        if result["status"] == "error":
+            if "未找到" in result["message"]:
+                return JSONResponse(status_code=404, content=result)
+            else:
+                return JSONResponse(status_code=500, content=result)
+
+        return JSONResponse(status_code=200, content=result)
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": f"判断任务是否可以开启时发生错误: {str(e)}",
+                "task_id": task_id,
+                "can_start": False,
+                "error": str(e),
+            },
+        )
+
+
+@repository_router.get("/analysis-tasks/queue/status")
+async def get_queue_status(
+    db: Session = Depends(get_db),
+):
+    """
+    获取任务队列状态
+
+    Args:
+        db: 数据库会话
+
+    Returns:
+        JSON响应包含队列状态信息
+    """
+    try:
+        # 获取队列状态
+        result = AnalysisTaskService.get_queue_status(db)
+
+        if result["status"] == "error":
+            return JSONResponse(status_code=500, content=result)
+
+        return JSONResponse(status_code=200, content=result)
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": "获取队列状态时发生未知错误",
                 "error": str(e),
             },
         )

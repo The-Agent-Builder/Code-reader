@@ -105,6 +105,8 @@ async def root():
                 "create_task": "/api/repository/analysis-tasks",
                 "update_task": "/api/repository/analysis-tasks/{task_id}",
                 "delete_task": "/api/repository/analysis-tasks/{task_id}",
+                "can_start_task": "/api/repository/analysis-tasks/{task_id}/can-start",
+                "queue_status": "/api/repository/analysis-tasks/queue/status",
                 "files": "/api/repository/files/{task_id}",
                 "get_file_analysis": "/api/repository/file-analysis/{file_id}?task_id={task_id}",
                 "create_file_analysis": "/api/repository/file-analysis",

@@ -14,21 +14,22 @@ interface OutletContext {
 export default function AnalysisPage() {
   const navigate = useNavigate();
   const { onAnalysisComplete } = useOutletContext<OutletContext>();
-  const [analysisConfig, setAnalysisConfig] = useState<AnalysisConfiguration | null>(null);
+  const [analysisConfig, setAnalysisConfig] =
+    useState<AnalysisConfiguration | null>(null);
 
   useEffect(() => {
     // 从sessionStorage获取分析配置
-    const configStr = sessionStorage.getItem('analysisConfig');
+    const configStr = sessionStorage.getItem("analysisConfig");
     if (configStr) {
       setAnalysisConfig(JSON.parse(configStr));
     } else {
       // 如果没有配置，重定向到上传页面
-      navigate('/upload');
+      navigate("/upload");
     }
   }, [navigate]);
 
   const handleBackgroundMode = () => {
-    navigate('/background');
+    navigate("/background");
   };
 
   if (!analysisConfig) {

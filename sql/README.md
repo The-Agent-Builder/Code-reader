@@ -68,18 +68,19 @@ source /path/to/sql/2_create_tables.sql
 
 存储代码分析任务的执行情况和统计信息
 
-| 字段名             | 数据类型    | 约束                        | 说明                                       |
-| ------------------ | ----------- | --------------------------- | ------------------------------------------ |
-| `id`               | INT         | PRIMARY KEY, AUTO_INCREMENT | 任务唯一标识符                             |
-| `repository_id`    | INT         | NOT NULL, FOREIGN KEY       | 关联的仓库 ID                              |
-| `total_files`      | INT         | DEFAULT 0                   | 总文件数                                   |
-| `successful_files` | INT         | DEFAULT 0                   | 成功分析文件数                             |
-| `failed_files`     | INT         | DEFAULT 0                   | 失败文件数                                 |
-| `code_lines`       | INT         | DEFAULT 0                   | 代码行数                                   |
-| `module_count`     | INT         | DEFAULT 0                   | 模块数量                                   |
-| `status`           | VARCHAR(32) | DEFAULT 'pending'           | 任务状态：pending/running/completed/failed |
-| `start_time`       | DATETIME    | DEFAULT CURRENT_TIMESTAMP   | 任务开始时间                               |
-| `end_time`         | DATETIME    | NULL                        | 任务结束时间                               |
+| 字段名             | 数据类型     | 约束                        | 说明                                       |
+| ------------------ | ------------ | --------------------------- | ------------------------------------------ |
+| `id`               | INT          | PRIMARY KEY, AUTO_INCREMENT | 任务唯一标识符                             |
+| `repository_id`    | INT          | NOT NULL, FOREIGN KEY       | 关联的仓库 ID                              |
+| `total_files`      | INT          | DEFAULT 0                   | 总文件数                                   |
+| `successful_files` | INT          | DEFAULT 0                   | 成功分析文件数                             |
+| `failed_files`     | INT          | DEFAULT 0                   | 失败文件数                                 |
+| `code_lines`       | INT          | DEFAULT 0                   | 代码行数                                   |
+| `module_count`     | INT          | DEFAULT 0                   | 模块数量                                   |
+| `status`           | VARCHAR(32)  | DEFAULT 'pending'           | 任务状态：pending/running/completed/failed |
+| `task_index`       | VARCHAR(255) | NULL                        | 任务索引                                   |
+| `start_time`       | DATETIME     | DEFAULT CURRENT_TIMESTAMP   | 任务开始时间                               |
+| `end_time`         | DATETIME     | NULL                        | 任务结束时间                               |
 
 **索引：**
 
@@ -87,6 +88,7 @@ source /path/to/sql/2_create_tables.sql
 - `idx_status`: 按状态筛选任务
 - `idx_start_time`: 按开始时间排序
 - `idx_status_repo`: 按仓库和状态组合查询
+- `idx_task_index`: 按任务索引排序和查询
 
 **外键约束：**
 
