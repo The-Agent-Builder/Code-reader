@@ -67,6 +67,16 @@ export default function AnalysisProgress({
   const [taskId, setTaskId] = useState<number | null>(null);
   const [fileList, setFileList] = useState<string[]>([]);
 
+  // 知识库创建相关状态
+  const [vectorizationProgress, setVectorizationProgress] = useState({
+    currentBatch: 0,
+    totalBatches: 0,
+    processedFiles: 0,
+    totalFiles: 0,
+    currentFile: "",
+    indexName: "",
+  });
+
   // 模拟队列数据（保留作为备用）
   const [queueData] = useState({
     position: Math.floor(Math.random() * 8) + 3, // 随机生成3-10的队列位置
@@ -646,18 +656,102 @@ log_file = "app.log"
             return false;
           }
 
-          // 模拟知识库创建过程
-          console.log("正在构建代码知识图谱...");
-          await new Promise((resolve) => setTimeout(resolve, 800));
+          try {
+            // 初始化知识库创建进度状态
+            setVectorizationProgress({
+              currentBatch: 0,
+              totalBatches: 1,
+              processedFiles: 0,
+              totalFiles: 0,
+              currentFile: "正在启动知识库创建...",
+              indexName: "",
+            });
 
-          console.log("正在建立文件关联关系...");
-          await new Promise((resolve) => setTimeout(resolve, 600));
+            // 调用后端知识库创建flow
+            console.log("触发知识库创建flow...");
+            const flowResult = await api.createKnowledgeBaseFlow(taskId);
 
-          console.log("正在生成语义索引...");
-          await new Promise((resolve) => setTimeout(resolve, 600));
+            if (flowResult.status !== "success") {
+              console.error("知识库创建flow启动失败:", flowResult.message);
+              setVectorizationProgress((prev) => ({
+                ...prev,
+                currentFile: `错误: ${flowResult.message}`,
+              }));
+              return false;
+            }
 
-          console.log("知识库创建完成");
-          return true;
+            console.log("知识库创建flow已启动，等待完成...");
+
+            // 更新进度状态
+            setVectorizationProgress((prev) => ({
+              ...prev,
+              currentFile: "知识库创建中，请稍候...",
+            }));
+
+            // 轮询检查任务状态，直到完成
+            const maxPollingTime = 300000; // 5分钟最大等待时间
+            const pollingInterval = 3000; // 3秒轮询间隔
+            const startTime = Date.now();
+
+            while (Date.now() - startTime < maxPollingTime) {
+              await new Promise((resolve) =>
+                setTimeout(resolve, pollingInterval)
+              );
+
+              // 检查任务状态
+              const taskStatus = await api.getAnalysisTask(taskId);
+
+              if (taskStatus.status === "success" && taskStatus.task) {
+                const task = taskStatus.task;
+
+                if (task.status === "completed" && task.task_index) {
+                  // 知识库创建完成
+                  console.log(`知识库创建完成，索引: ${task.task_index}`);
+
+                  setVectorizationProgress((prev) => ({
+                    ...prev,
+                    currentBatch: 1,
+                    processedFiles: 1,
+                    totalFiles: 1,
+                    currentFile: "知识库创建完成",
+                    indexName: task.task_index,
+                  }));
+
+                  return true;
+                } else if (task.status === "failed") {
+                  // 知识库创建失败
+                  console.error("知识库创建失败");
+                  setVectorizationProgress((prev) => ({
+                    ...prev,
+                    currentFile: "知识库创建失败",
+                  }));
+                  return false;
+                } else {
+                  // 仍在处理中，更新进度显示
+                  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                  setVectorizationProgress((prev) => ({
+                    ...prev,
+                    currentFile: `知识库创建中... (${elapsed}s)`,
+                  }));
+                }
+              }
+            }
+
+            // 超时
+            console.error("知识库创建超时");
+            setVectorizationProgress((prev) => ({
+              ...prev,
+              currentFile: "知识库创建超时",
+            }));
+            return false;
+          } catch (error) {
+            console.error("知识库创建过程中出错:", error);
+            setVectorizationProgress((prev) => ({
+              ...prev,
+              currentFile: `错误: ${error}`,
+            }));
+            return false;
+          }
 
         case 2: // 分析数据模型
           console.log("开始分析数据模型...");
@@ -1047,6 +1141,55 @@ log_file = "app.log"
                 <div className="space-y-6">
                   <Progress value={progress} className="h-2" />
 
+                  {/* 向量化进度详情 - 只在知识库创建步骤时显示 */}
+                  {currentStep === 1 &&
+                    vectorizationProgress.totalFiles > 0 && (
+                      <Card className="p-4 bg-blue-50 border-blue-200">
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h4 className="font-medium text-blue-800">
+                              知识库创建进度
+                            </h4>
+                            <span className="text-sm text-blue-600">
+                              {vectorizationProgress.currentBatch}/
+                              {vectorizationProgress.totalBatches} 批次
+                            </span>
+                          </div>
+
+                          <div className="space-y-2">
+                            <div className="flex justify-between text-sm">
+                              <span className="text-blue-700">已处理文档</span>
+                              <span className="font-medium text-blue-800">
+                                {vectorizationProgress.processedFiles}/
+                                {vectorizationProgress.totalFiles}
+                              </span>
+                            </div>
+
+                            <Progress
+                              value={
+                                (vectorizationProgress.processedFiles /
+                                  vectorizationProgress.totalFiles) *
+                                100
+                              }
+                              className="h-1"
+                            />
+
+                            {vectorizationProgress.currentFile && (
+                              <div className="text-xs text-blue-600 truncate">
+                                当前处理: {vectorizationProgress.currentFile}
+                              </div>
+                            )}
+
+                            {vectorizationProgress.indexName && (
+                              <div className="text-xs text-blue-600">
+                                索引名称: {vectorizationProgress.indexName}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </Card>
+                    )}
+
                   <div className="space-y-4">
                     {analysisSteps.map((step, index) => {
                       const Icon = step.icon;
@@ -1075,7 +1218,18 @@ log_file = "app.log"
                               ${isActive ? "animate-pulse" : ""}
                             `}
                           />
-                          <span className="flex-1 text-left">{step.label}</span>
+                          <span className="flex-1 text-left">
+                            {step.label}
+                            {/* 在知识库创建步骤显示额外信息 */}
+                            {index === 1 &&
+                              isActive &&
+                              vectorizationProgress.totalFiles > 0 && (
+                                <span className="block text-xs mt-1 opacity-75">
+                                  正在处理 {vectorizationProgress.totalFiles}{" "}
+                                  个文档...
+                                </span>
+                              )}
+                          </span>
                           {isStepCompleted && (
                             <span className="text-green-600">✓</span>
                           )}

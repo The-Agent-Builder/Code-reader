@@ -8,6 +8,10 @@ from .readme_analysis_node import ReadmeAnalysisNode
 from .save_results_node import SaveResultsNode
 from .save_to_mysql_node import SaveToMySQLNode
 
+# Web flow nodes
+from .web_vectorize_repo_node import WebVectorizeRepoNode
+from .database_update_node import DatabaseUpdateNode
+
 # GitHub-related nodes are commented out to avoid dependency issues
 # from .github_info_fetch_node import GitHubInfoFetchNode
 # from .git_clone_node import GitCloneNode
@@ -21,4 +25,6 @@ __all__ = [
     "ReadmeAnalysisNode",
     "SaveResultsNode",
     "SaveToMySQLNode",
+    "WebVectorizeRepoNode",
+    "DatabaseUpdateNode",
 ]

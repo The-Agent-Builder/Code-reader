@@ -102,6 +102,12 @@ class Config:
         except ValueError:
             return 100
 
+    # Web API 配置
+    @property
+    def api_base_url(self) -> str:
+        """后端 API Base URL"""
+        return os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
+
     # 应用配置
     @property
     def app_host(self) -> str:
@@ -150,6 +156,7 @@ class Config:
             "llm_retry_delay": self.llm_retry_delay,
             "rag_base_url": self.rag_base_url,
             "rag_batch_size": self.rag_batch_size,
+            "api_base_url": self.api_base_url,
             "app_host": self.app_host,
             "app_port": self.app_port,
             "debug": self.debug,

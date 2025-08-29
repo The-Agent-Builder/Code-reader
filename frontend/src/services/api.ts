@@ -703,6 +703,212 @@ export class ApiService {
     console.log(`Create file analysis response:`, result);
     return result;
   }
+
+  // RAG 知识库相关方法
+
+  // 检查RAG服务健康状态
+  async checkRAGHealth(): Promise<{
+    status: string;
+    message?: string;
+  }> {
+    try {
+      // 从环境变量或配置中获取RAG_BASE_URL
+      const ragBaseUrl = "http://nodeport.sensedeal.vip:32421"; // 这里应该从配置中读取
+
+      const response = await fetch(`${ragBaseUrl}/health`, {
+        method: "GET",
+        timeout: 10000,
+      });
+
+      if (response.ok) {
+        return { status: "success", message: "RAG服务运行正常" };
+      } else {
+        return { status: "error", message: `RAG服务异常: ${response.status}` };
+      }
+    } catch (error) {
+      return { status: "error", message: `无法连接RAG服务: ${error}` };
+    }
+  }
+
+  // 创建知识库
+  async createKnowledgeBase(
+    documents: Array<{
+      title: string;
+      file: string;
+      content: string;
+      category: string;
+      language?: string;
+      start_line?: number;
+      end_line?: number;
+    }>,
+    vectorField: string = "content",
+    projectName?: string
+  ): Promise<{
+    status: string;
+    message?: string;
+    index?: string;
+    count?: number;
+  }> {
+    try {
+      const ragBaseUrl = "http://nodeport.sensedeal.vip:32421";
+
+      const requestData = {
+        documents,
+        vector_field: vectorField,
+      };
+
+      console.log(`创建知识库，文档数量: ${documents.length}`);
+      if (projectName) {
+        console.log(`项目名称: ${projectName}`);
+      }
+
+      const response = await fetch(`${ragBaseUrl}/documents`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestData),
+        timeout: 300000, // 5分钟超时
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log(
+          `知识库创建成功，索引: ${result.index}, 文档数量: ${result.count}`
+        );
+        return {
+          status: "success",
+          message: "知识库创建成功",
+          index: result.index,
+          count: result.count,
+        };
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        return {
+          status: "error",
+          message: `知识库创建失败: ${
+            errorData.message || response.statusText
+          }`,
+        };
+      }
+    } catch (error) {
+      console.error("创建知识库时出错:", error);
+      return {
+        status: "error",
+        message: `创建知识库时出错: ${error}`,
+      };
+    }
+  }
+
+  // 向已存在的索引添加文档
+  async addDocumentsToIndex(
+    documents: Array<{
+      title: string;
+      file: string;
+      content: string;
+      category: string;
+      language?: string;
+      start_line?: number;
+      end_line?: number;
+    }>,
+    indexName: string,
+    vectorField: string = "content"
+  ): Promise<{
+    status: string;
+    message?: string;
+    count?: number;
+  }> {
+    try {
+      const ragBaseUrl = "http://nodeport.sensedeal.vip:32421";
+
+      const requestData = {
+        documents,
+        vector_field: vectorField,
+        index: indexName,
+      };
+
+      console.log(`向索引 ${indexName} 添加 ${documents.length} 个文档`);
+
+      const response = await fetch(`${ragBaseUrl}/documents`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestData),
+        timeout: 300000, // 5分钟超时
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`成功添加 ${result.count} 个文档到索引`);
+        return {
+          status: "success",
+          message: "文档添加成功",
+          count: result.count,
+        };
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        return {
+          status: "error",
+          message: `添加文档失败: ${errorData.message || response.statusText}`,
+        };
+      }
+    } catch (error) {
+      console.error("添加文档时出错:", error);
+      return {
+        status: "error",
+        message: `添加文档时出错: ${error}`,
+      };
+    }
+  }
+
+  // 触发知识库创建flow
+  async createKnowledgeBaseFlow(taskId: number): Promise<{
+    status: string;
+    message?: string;
+    task_id?: number;
+    task_status?: string;
+  }> {
+    try {
+      console.log(`触发任务 ${taskId} 的知识库创建flow...`);
+
+      const response = await fetch(
+        `${this.baseUrl}/api/repository/analysis-tasks/${taskId}/create-knowledge-base`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 30000, // 30秒超时
+        }
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`知识库创建flow启动成功:`, result);
+        return {
+          status: "success",
+          message: result.message || "知识库创建任务已启动",
+          task_id: result.task_id,
+          task_status: result.task_status,
+        };
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        return {
+          status: "error",
+          message: `启动知识库创建失败: ${
+            errorData.message || response.statusText
+          }`,
+        };
+      }
+    } catch (error) {
+      console.error("触发知识库创建flow时出错:", error);
+      return {
+        status: "error",
+        message: `触发知识库创建flow时出错: ${error}`,
+      };
+    }
+  }
 }
 
 // 默认API服务实例
@@ -775,6 +981,23 @@ export const api = {
 
   // 队列相关
   getQueueStatus: () => apiService.getQueueStatus(),
+
+  // RAG 知识库相关
+  createKnowledgeBase: (
+    documents: any[],
+    vectorField?: string,
+    projectName?: string
+  ) => apiService.createKnowledgeBase(documents, vectorField, projectName),
+  addDocumentsToIndex: (
+    documents: any[],
+    indexName: string,
+    vectorField?: string
+  ) => apiService.addDocumentsToIndex(documents, indexName, vectorField),
+  checkRAGHealth: () => apiService.checkRAGHealth(),
+
+  // 知识库创建flow
+  createKnowledgeBaseFlow: (taskId: number) =>
+    apiService.createKnowledgeBaseFlow(taskId),
 };
 
 export default api;

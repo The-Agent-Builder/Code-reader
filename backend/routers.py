@@ -7,8 +7,13 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from database import get_db
 from services import FileAnalysisService, AnalysisItemService, RepositoryService, AnalysisTaskService, UploadService
+from models import AnalysisTask, Repository
 from typing import Optional, List
 from pydantic import BaseModel, Field
+import logging
+
+# 设置logger
+logger = logging.getLogger(__name__)
 
 
 # Pydantic模型定义
@@ -943,6 +948,132 @@ async def upload_repository(
                 "status": "error",
                 "message": "上传仓库文件时发生未知错误",
                 "repository_name": repository_name,
+                "error": str(e),
+            },
+        )
+
+
+@repository_router.post("/analysis-tasks/{task_id}/create-knowledge-base")
+async def create_knowledge_base(
+    task_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    为指定任务创建知识库
+
+    触发知识库创建flow，包含向量化和数据库更新
+
+    Args:
+        task_id: 分析任务ID
+        db: 数据库会话
+
+    Returns:
+        JSON响应包含知识库创建状态和进度信息
+    """
+    try:
+        # 验证任务是否存在
+        task = db.query(AnalysisTask).filter(AnalysisTask.id == task_id).first()
+        if not task:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "status": "error",
+                    "message": f"未找到ID为 {task_id} 的分析任务",
+                    "task_id": task_id,
+                },
+            )
+
+        # 获取仓库信息
+        repository = db.query(Repository).filter(Repository.id == task.repository_id).first()
+        if not repository:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "status": "error",
+                    "message": f"未找到仓库ID为 {task.repository_id} 的仓库",
+                    "task_id": task_id,
+                },
+            )
+
+        # 检查任务状态
+        if task.status not in ["pending", "running"]:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "error",
+                    "message": f"任务状态为 {task.status}，无法创建知识库",
+                    "task_id": task_id,
+                },
+            )
+
+        # 准备仓库信息
+        repo_info = {
+            "full_name": repository.full_name or repository.name,
+            "name": repository.name,
+            "local_path": repository.local_path,
+        }
+
+        # 启动知识库创建flow（异步执行）
+        import asyncio
+        import sys
+        from pathlib import Path
+
+        # 添加项目根目录到Python路径
+        project_root = Path(__file__).parent.parent
+        if str(project_root) not in sys.path:
+            sys.path.insert(0, str(project_root))
+
+        try:
+            from src.flows.web_flow import create_knowledge_base as create_kb_flow
+        except ImportError as e:
+            logger.error(f"导入知识库创建flow失败: {str(e)}")
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": f"导入知识库创建flow失败: {str(e)}",
+                    "task_id": task_id,
+                },
+            )
+
+        # 更新任务状态为运行中
+        task.status = "running"
+        db.commit()
+
+        # 在后台异步执行知识库创建
+        try:
+            asyncio.create_task(create_kb_flow(task_id=task_id, local_path=repository.local_path, repo_info=repo_info))
+        except Exception as e:
+            logger.error(f"启动知识库创建flow失败: {str(e)}")
+            # 回滚任务状态
+            task.status = "failed"
+            db.commit()
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": f"启动知识库创建flow失败: {str(e)}",
+                    "task_id": task_id,
+                },
+            )
+
+        return JSONResponse(
+            status_code=202,  # 202 Accepted - 请求已接受，正在处理
+            content={
+                "status": "accepted",
+                "message": "知识库创建任务已启动",
+                "task_id": task_id,
+                "task_status": "running",
+            },
+        )
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": "启动知识库创建时发生未知错误",
+                "task_id": task_id,
                 "error": str(e),
             },
         )

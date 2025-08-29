@@ -7,7 +7,13 @@ from .file_analysis_flow import (
     QuickAnalysisFlow,
     analyze_repository,
     analyze_local_folder,
-    create_analysis_flow
+    create_analysis_flow,
+)
+
+# Import web knowledge base creation flow
+from .web_flow import (
+    WebKnowledgeBaseFlow,
+    create_knowledge_base,
 )
 
 # Comment out GitHub-specific flows to avoid dependency issues
@@ -20,7 +26,9 @@ __all__ = [
     "QuickAnalysisFlow",
     "analyze_repository",
     "analyze_local_folder",
-    "create_analysis_flow"
+    "create_analysis_flow",
+    "WebKnowledgeBaseFlow",
+    "create_knowledge_base",
     # "WebUIFlow",
     # "handle_webui_request"
 ]

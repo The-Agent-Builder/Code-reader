@@ -1689,7 +1689,23 @@ class AnalysisTaskService:
             # 更新字段
             for field, value in update_data.items():
                 if hasattr(task, field):
-                    setattr(task, field, value)
+                    # 特殊处理日期时间字段
+                    if field in ["start_time", "end_time"] and isinstance(value, str):
+                        try:
+                            # 解析ISO格式的日期时间字符串
+                            # 处理带有Z后缀的ISO格式（UTC时间）
+                            if value.endswith("Z"):
+                                value = value[:-1] + "+00:00"
+                            # 解析为datetime对象
+                            parsed_datetime = datetime.fromisoformat(value)
+                            setattr(task, field, parsed_datetime)
+                            logger.info(f"成功解析日期时间字段 {field}: {value} -> {parsed_datetime}")
+                        except ValueError as e:
+                            logger.error(f"日期时间格式解析失败: {field}={value}, 错误: {str(e)}")
+                            # 如果解析失败，跳过这个字段
+                            continue
+                    else:
+                        setattr(task, field, value)
 
             db.commit()
             db.refresh(task)
