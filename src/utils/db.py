@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 from typing import Optional
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, declarative_base
 from dotenv import load_dotenv
 
@@ -52,6 +52,26 @@ _engine = None
 _SessionLocal = None
 
 
+def _set_timezone(dbapi_connection, connection_record):
+    """设置数据库连接的时区为 UTC+8"""
+    try:
+        # 对于 pymysql 连接器，直接执行 SQL
+        cursor = dbapi_connection.cursor()
+        cursor.execute("SET time_zone = '+08:00'")
+        cursor.close()
+        logger.info("数据库连接时区已设置为 UTC+8")
+    except Exception as e:
+        logger.error(f"设置数据库时区失败: {str(e)}")
+        # 尝试备用方法
+        try:
+            cursor = dbapi_connection.cursor()
+            cursor.execute("SET SESSION time_zone = '+08:00'")
+            cursor.close()
+            logger.info("使用 SESSION 方式设置数据库时区为 UTC+8")
+        except Exception as e2:
+            logger.error(f"备用时区设置也失败: {str(e2)}")
+
+
 def get_engine(echo: Optional[bool] = None):
     """获取或创建SQLAlchemy Engine"""
     global _engine
@@ -64,6 +84,10 @@ def get_engine(echo: Optional[bool] = None):
         _engine = create_engine(
             db_url, echo=echo_flag, pool_pre_ping=True, pool_size=pool_size, max_overflow=max_overflow
         )
+
+        # 添加时区设置事件监听器
+        event.listen(_engine, "connect", _set_timezone)
+        logger.info("已添加数据库时区设置监听器 (UTC+8)")
     return _engine
 
 

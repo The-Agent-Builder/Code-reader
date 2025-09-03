@@ -2185,7 +2185,7 @@ class UploadService:
             if existing_repo:
                 # 更新现有仓库信息
                 existing_repo.name = clean_repo_name  # 更新仓库名称
-                existing_repo.full_name = clean_repo_name
+                existing_repo.full_name = md5_dir_name  # 直接使用MD5信息
                 existing_repo.status = 1  # 设置为存在状态
                 existing_repo.updated_at = current_time
                 repository = existing_repo
@@ -2195,7 +2195,7 @@ class UploadService:
                 repository = Repository(
                     user_id=1,  # 默认用户ID
                     name=clean_repo_name,  # 使用原始仓库名称
-                    full_name=f"{clean_repo_name} (MD5: {md5_dir_name})",  # 包含MD5信息的完整名称
+                    full_name=md5_dir_name,  # 直接使用MD5信息
                     local_path=str(repo_path),  # 使用MD5目录路径
                     status=1,
                     created_at=current_time,

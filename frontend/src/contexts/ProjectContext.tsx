@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, ReactNode } from "react";
 
 interface ProjectContextType {
   currentProjectName: string;
@@ -9,18 +9,21 @@ interface ProjectContextType {
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
 
 export function ProjectProvider({ children }: { children: ReactNode }) {
-  const [currentProjectName, setCurrentProjectName] = useState<string>('my-awesome-project');
+  const [currentProjectName, setCurrentProjectName] =
+    useState<string>("my-awesome-project");
 
   const getProjectUrl = (projectName?: string) => {
     return `/result/${projectName || currentProjectName}`;
   };
 
   return (
-    <ProjectContext.Provider value={{
-      currentProjectName,
-      setCurrentProjectName,
-      getProjectUrl,
-    }}>
+    <ProjectContext.Provider
+      value={{
+        currentProjectName,
+        setCurrentProjectName,
+        getProjectUrl,
+      }}
+    >
       {children}
     </ProjectContext.Provider>
   );
@@ -29,7 +32,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 export function useProject() {
   const context = useContext(ProjectContext);
   if (context === undefined) {
-    throw new Error('useProject must be used within a ProjectProvider');
+    throw new Error("useProject must be used within a ProjectProvider");
   }
   return context;
 }

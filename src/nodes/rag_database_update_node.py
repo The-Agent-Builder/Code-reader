@@ -1,9 +1,10 @@
 """
-DatabaseUpdateNode - 数据库更新节点，将索引信息更新到数据库
+RAGDatabaseUpdateNode - RAG数据库更新节点，将索引信息更新到数据库
 Design: AsyncNode, max_retries=3, wait=5
 """
 
 import aiohttp
+import asyncio
 import logging
 from typing import Dict, Any, Tuple
 from pocketflow import AsyncNode
@@ -14,8 +15,8 @@ from ..utils.config import get_config
 logger = logging.getLogger(__name__)
 
 
-class DatabaseUpdateNode(AsyncNode):
-    """数据库更新节点 - 将索引信息更新到数据库"""
+class RAGDatabaseUpdateNode(AsyncNode):
+    """RAG数据库更新节点 - 将索引信息更新到数据库"""
 
     def __init__(self):
         super().__init__(max_retries=3, wait=5)
@@ -32,7 +33,7 @@ class DatabaseUpdateNode(AsyncNode):
         - Read: shared.vectorstore_index (向量索引名称)
         """
         logger.info("=" * 60)
-        logger.info("📋 阶段: 数据库更新 (DatabaseUpdateNode)")
+        logger.info("📋 阶段: 数据库更新 (RAGDatabaseUpdateNode)")
 
         task_id = shared.get("task_id")
         vectorstore_index = shared.get("vectorstore_index")
@@ -58,11 +59,15 @@ class DatabaseUpdateNode(AsyncNode):
             # 构建API URL
             api_url = f"{self.api_base_url}/api/repository/analysis-tasks/{task_id}"
 
-            # 准备更新数据
-            update_data = {"task_index": vectorstore_index, "status": "completed"}
+            # 准备更新数据 - 只更新task_index，不改变任务状态
+            # 任务状态应该由整个分析流程控制，而不是单个步骤
+            update_data = {"task_index": vectorstore_index}
 
             logger.info(f"🔄 发送PUT请求到: {api_url}")
             logger.info(f"📝 更新数据: {update_data}")
+
+            # 添加延迟让用户看到数据库更新过程
+            await asyncio.sleep(1)
 
             # 发送PUT请求
             async with aiohttp.ClientSession() as session:

@@ -10,7 +10,7 @@ from .save_to_mysql_node import SaveToMySQLNode
 
 # Web flow nodes
 from .web_vectorize_repo_node import WebVectorizeRepoNode
-from .database_update_node import DatabaseUpdateNode
+from .rag_database_update_node import RAGDatabaseUpdateNode
 
 # GitHub-related nodes are commented out to avoid dependency issues
 # from .github_info_fetch_node import GitHubInfoFetchNode
@@ -26,5 +26,5 @@ __all__ = [
     "SaveResultsNode",
     "SaveToMySQLNode",
     "WebVectorizeRepoNode",
-    "DatabaseUpdateNode",
+    "RAGDatabaseUpdateNode",
 ]

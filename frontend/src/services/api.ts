@@ -574,6 +574,41 @@ export class ApiService {
     return result;
   }
 
+  // 获取分析任务信息
+  async getAnalysisTask(taskId: number): Promise<{
+    status: string;
+    message?: string;
+    task?: {
+      id: number;
+      status: string;
+      start_time: string;
+      end_time?: string;
+      total_files: number;
+      successful_files: number;
+      failed_files: number;
+      progress_percentage: number;
+      task_index?: string;
+    };
+  }> {
+    const response = await fetch(
+      `${this.baseUrl}/api/repository/analysis-tasks/${taskId}`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log(`Get analysis task response:`, result);
+    return result;
+  }
+
   // 更新分析任务状态
   async updateAnalysisTask(
     taskId: number,
@@ -868,12 +903,13 @@ export class ApiService {
     message?: string;
     task_id?: number;
     task_status?: string;
+    vectorstore_index?: string;
   }> {
     try {
       console.log(`触发任务 ${taskId} 的知识库创建flow...`);
 
       const response = await fetch(
-        `${this.baseUrl}/api/repository/analysis-tasks/${taskId}/create-knowledge-base`,
+        `${this.baseUrl}/api/analysis/${taskId}/create-knowledge-base`,
         {
           method: "POST",
           headers: {
@@ -906,6 +942,128 @@ export class ApiService {
       return {
         status: "error",
         message: `触发知识库创建flow时出错: ${error}`,
+      };
+    }
+  }
+
+  // 触发分析数据模型flow
+  async analyzeDataModelFlow(taskId: number): Promise<{
+    status: string;
+    message?: string;
+    task_id?: number;
+    task_status?: string;
+    analysis_items_count?: number;
+    total_files?: number;
+    successful_files?: number;
+    failed_files?: number;
+    success_rate?: string;
+    analysis_results?: Array<{
+      file_id: number;
+      file_path: string;
+      status: string;
+      analysis_items_count?: number;
+      error?: string;
+    }>;
+  }> {
+    try {
+      console.log(`触发任务 ${taskId} 的分析数据模型flow...`);
+
+      const response = await fetch(
+        `${this.baseUrl}/api/analysis/${taskId}/analyze-data-model`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 30000, // 30秒超时
+        }
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`分析数据模型flow启动成功:`, result);
+        return {
+          status: "success",
+          message: result.message || "分析数据模型任务已启动",
+          task_id: result.task_id,
+          task_status: result.task_status,
+          analysis_items_count: result.analysis_items_count,
+          total_files: result.total_files,
+          successful_files: result.successful_files,
+          failed_files: result.failed_files,
+          success_rate: result.success_rate,
+          analysis_results: result.analysis_results,
+        };
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        return {
+          status: "error",
+          message: `启动分析数据模型失败: ${
+            errorData.message || response.statusText
+          }`,
+        };
+      }
+    } catch (error) {
+      console.error("触发分析数据模型flow时出错:", error);
+      return {
+        status: "error",
+        message: `触发分析数据模型flow时出错: ${error}`,
+      };
+    }
+  }
+
+  // 触发单文件分析数据模型flow
+  async analyzeSingleFileDataModel(
+    fileId: number,
+    taskIndex: string
+  ): Promise<{
+    status: string;
+    message?: string;
+    file_id?: number;
+    file_path?: string;
+    analysis_items_count?: number;
+  }> {
+    try {
+      console.log(`触发文件 ${fileId} 的单文件分析数据模型flow...`);
+
+      const response = await fetch(
+        `${
+          this.baseUrl
+        }/api/analysis/file/${fileId}/analyze-data-model?task_index=${encodeURIComponent(
+          taskIndex
+        )}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 30000, // 30秒超时
+        }
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`单文件分析数据模型flow启动成功:`, result);
+        return {
+          status: "success",
+          message: result.message || "单文件分析数据模型任务已启动",
+          file_id: result.file_id,
+          file_path: result.file_path,
+          analysis_items_count: result.analysis_items_count,
+        };
+      } else {
+        const errorData = await response.json();
+        console.error("单文件分析数据模型flow启动失败:", errorData);
+        return {
+          status: "error",
+          message: errorData.message || `HTTP ${response.status}`,
+        };
+      }
+    } catch (error) {
+      console.error("触发单文件分析数据模型flow失败:", error);
+      return {
+        status: "error",
+        message: `触发单文件分析数据模型flow失败: ${error}`,
       };
     }
   }
@@ -969,6 +1127,7 @@ export const api = {
     start_time?: string;
     task_index?: string;
   }) => apiService.createAnalysisTask(taskData),
+  getAnalysisTask: (taskId: number) => apiService.getAnalysisTask(taskId),
   updateAnalysisTask: (
     taskId: number,
     updateData: Parameters<ApiService["updateAnalysisTask"]>[1]
@@ -998,6 +1157,10 @@ export const api = {
   // 知识库创建flow
   createKnowledgeBaseFlow: (taskId: number) =>
     apiService.createKnowledgeBaseFlow(taskId),
+
+  // 分析数据模型flow
+  analyzeDataModelFlow: (taskId: number) =>
+    apiService.analyzeDataModelFlow(taskId),
 };
 
 export default api;

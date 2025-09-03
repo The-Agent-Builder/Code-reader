@@ -51,6 +51,11 @@ export default function AnalysisProgress({
   const [countdown, setCountdown] = useState(0);
   const [isCompleted, setIsCompleted] = useState(false);
 
+  // 跟踪每个步骤的完成状态
+  const [completedSteps, setCompletedSteps] = useState<boolean[]>(
+    new Array(analysisSteps.length).fill(false)
+  );
+
   // 队列状态相关
   const [isInQueue, setIsInQueue] = useState(false);
   const [queueInfo, setQueueInfo] = useState({
@@ -595,6 +600,10 @@ log_file = "app.log"
   // 执行具体的分析步骤API调用
   const executeAnalysisStep = async (stepIndex: number): Promise<boolean> => {
     try {
+      console.log(
+        `=== 开始执行步骤 ${stepIndex}: ${analysisSteps[stepIndex].label} ===`
+      );
+
       switch (stepIndex) {
         case 0: // 扫描代码文件
           console.log("开始扫描代码文件...");
@@ -667,20 +676,8 @@ log_file = "app.log"
               indexName: "",
             });
 
-            // 调用后端知识库创建flow
-            console.log("触发知识库创建flow...");
-            const flowResult = await api.createKnowledgeBaseFlow(taskId);
-
-            if (flowResult.status !== "success") {
-              console.error("知识库创建flow启动失败:", flowResult.message);
-              setVectorizationProgress((prev) => ({
-                ...prev,
-                currentFile: `错误: ${flowResult.message}`,
-              }));
-              return false;
-            }
-
-            console.log("知识库创建flow已启动，等待完成...");
+            // 调用后端知识库创建flow，等待完成
+            console.log("触发知识库创建flow，等待完成...");
 
             // 更新进度状态
             setVectorizationProgress((prev) => ({
@@ -688,62 +685,31 @@ log_file = "app.log"
               currentFile: "知识库创建中，请稍候...",
             }));
 
-            // 轮询检查任务状态，直到完成
-            const maxPollingTime = 300000; // 5分钟最大等待时间
-            const pollingInterval = 3000; // 3秒轮询间隔
-            const startTime = Date.now();
+            const flowResult = await api.createKnowledgeBaseFlow(taskId);
 
-            while (Date.now() - startTime < maxPollingTime) {
-              await new Promise((resolve) =>
-                setTimeout(resolve, pollingInterval)
-              );
-
-              // 检查任务状态
-              const taskStatus = await api.getAnalysisTask(taskId);
-
-              if (taskStatus.status === "success" && taskStatus.task) {
-                const task = taskStatus.task;
-
-                if (task.status === "completed" && task.task_index) {
-                  // 知识库创建完成
-                  console.log(`知识库创建完成，索引: ${task.task_index}`);
-
-                  setVectorizationProgress((prev) => ({
-                    ...prev,
-                    currentBatch: 1,
-                    processedFiles: 1,
-                    totalFiles: 1,
-                    currentFile: "知识库创建完成",
-                    indexName: task.task_index,
-                  }));
-
-                  return true;
-                } else if (task.status === "failed") {
-                  // 知识库创建失败
-                  console.error("知识库创建失败");
-                  setVectorizationProgress((prev) => ({
-                    ...prev,
-                    currentFile: "知识库创建失败",
-                  }));
-                  return false;
-                } else {
-                  // 仍在处理中，更新进度显示
-                  const elapsed = Math.floor((Date.now() - startTime) / 1000);
-                  setVectorizationProgress((prev) => ({
-                    ...prev,
-                    currentFile: `知识库创建中... (${elapsed}s)`,
-                  }));
-                }
-              }
+            if (flowResult.status !== "success") {
+              console.error("知识库创建失败:", flowResult.message);
+              setVectorizationProgress((prev) => ({
+                ...prev,
+                currentFile: `错误: ${flowResult.message}`,
+              }));
+              return false;
             }
 
-            // 超时
-            console.error("知识库创建超时");
+            console.log("知识库创建完成:", flowResult);
+
+            // 更新进度状态为完成
             setVectorizationProgress((prev) => ({
               ...prev,
-              currentFile: "知识库创建超时",
+              currentBatch: 1,
+              processedFiles: 1,
+              totalFiles: 1,
+              currentFile: "知识库创建完成",
+              indexName: flowResult.vectorstore_index || "",
             }));
-            return false;
+
+            console.log("知识库创建步骤完成，准备继续下一步");
+            return true;
           } catch (error) {
             console.error("知识库创建过程中出错:", error);
             setVectorizationProgress((prev) => ({
@@ -755,17 +721,84 @@ log_file = "app.log"
 
         case 2: // 分析数据模型
           console.log("开始分析数据模型...");
-          // 这里可以添加数据模型分析的逻辑
-          await new Promise((resolve) => setTimeout(resolve, 1500));
-          console.log("分析数据模型完成");
-          return true;
+          if (!taskId) {
+            console.error("任务ID不存在，无法执行分析数据模型");
+            return false;
+          }
+
+          try {
+            // 调用后端分析数据模型flow，等待完成
+            console.log("触发分析数据模型flow，等待完成...");
+            const flowResult = await api.analyzeDataModelFlow(taskId);
+            console.log("分析数据模型完成:", flowResult);
+
+            if (flowResult.status !== "success") {
+              console.error("分析数据模型失败:", flowResult.message);
+              return false;
+            }
+
+            console.log(
+              `分析数据模型成功，创建了 ${
+                flowResult.analysis_items_count || 0
+              } 个分析项`
+            );
+            return true;
+          } catch (error) {
+            console.error("分析数据模型过程中出错:", error);
+            return false;
+          }
 
         case 3: // 生成文档结构
           console.log("开始生成文档结构...");
-          // 这里可以添加文档结构生成的逻辑
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          console.log("生成文档结构完成");
-          return true;
+          if (!taskId) {
+            console.error("任务ID不存在，无法生成文档结构");
+            return false;
+          }
+
+          try {
+            // 模拟文档结构生成的过程，显示进度
+            const totalDuration = 8000; // 8秒总时长
+            const updateInterval = 200; // 每200ms更新一次进度
+            const totalUpdates = totalDuration / updateInterval;
+
+            for (let i = 0; i <= totalUpdates; i++) {
+              const progress = (i / totalUpdates) * 100;
+
+              // 模拟不同阶段的文档结构生成
+              let currentTask = "";
+              if (progress < 20) {
+                currentTask = "分析项目结构...";
+              } else if (progress < 40) {
+                currentTask = "提取类和函数关系...";
+              } else if (progress < 60) {
+                currentTask = "生成依赖关系图...";
+              } else if (progress < 80) {
+                currentTask = "构建文档树结构...";
+              } else if (progress < 95) {
+                currentTask = "优化文档布局...";
+              } else {
+                currentTask = "文档结构生成完成";
+              }
+
+              // 更新进度显示（这里可以添加一个专门的文档结构进度状态）
+              console.log(
+                `生成文档结构进度: ${progress.toFixed(1)}% - ${currentTask}`
+              );
+
+              // 等待下一次更新
+              if (i < totalUpdates) {
+                await new Promise((resolve) =>
+                  setTimeout(resolve, updateInterval)
+                );
+              }
+            }
+
+            console.log("生成文档结构完成");
+            return true;
+          } catch (error) {
+            console.error("生成文档结构过程中出错:", error);
+            return false;
+          }
 
         default:
           return false;
@@ -777,10 +810,21 @@ log_file = "app.log"
   };
 
   useEffect(() => {
+    console.log("=== useEffect 被触发 ===", { isInQueue, taskId });
+
     // 如果在队列中，不开始分析步骤
     if (isInQueue) {
+      console.log("任务在队列中，跳过分析步骤");
       return;
     }
+
+    console.log("=== 开始重置分析状态并启动分析流程 ===");
+
+    // 重置步骤完成状态
+    setCompletedSteps(new Array(analysisSteps.length).fill(false));
+    setCurrentStep(0);
+    setProgress(0);
+    setIsCompleted(false);
 
     let isCancelled = false;
 
@@ -797,17 +841,36 @@ log_file = "app.log"
       const totalSteps = analysisSteps.length;
 
       for (let stepIndex = 0; stepIndex < totalSteps; stepIndex++) {
-        if (isCancelled) break;
+        if (isCancelled) {
+          console.log(`=== 流程被取消，在步骤 ${stepIndex} 处中断 ===`);
+          break;
+        }
 
+        console.log(
+          `=== 开始执行步骤 ${stepIndex}: ${analysisSteps[stepIndex].label} ===`
+        );
         setCurrentStep(stepIndex);
         const stepProgressStart = (stepIndex / totalSteps) * 100;
         const stepProgressEnd = ((stepIndex + 1) / totalSteps) * 100;
 
+        // 设置步骤开始时的进度
+        setProgress(stepProgressStart);
+
         // 开始执行当前步骤
+        console.log(
+          `即将调用 executeAnalysisStep(${stepIndex}): ${analysisSteps[stepIndex].label}`
+        );
         const stepSuccess = await executeAnalysisStep(stepIndex);
+        console.log(
+          `=== 步骤 ${stepIndex} 执行结果: ${
+            stepSuccess ? "✅ 成功" : "❌ 失败"
+          } ===`
+        );
 
         if (!stepSuccess) {
-          console.error(`步骤 ${stepIndex} 执行失败`);
+          console.error(
+            `步骤 ${stepIndex} 执行失败: ${analysisSteps[stepIndex].label}`
+          );
           // 更新任务状态为failed
           if (taskId) {
             try {
@@ -816,17 +879,37 @@ log_file = "app.log"
               console.error("更新任务状态为failed失败:", error);
             }
           }
+          console.error("分析流程因步骤失败而中断");
           break;
         }
+
+        console.log(
+          `步骤 ${stepIndex} 执行成功: ${analysisSteps[stepIndex].label}`
+        );
+
+        // 标记当前步骤为完成
+        setCompletedSteps((prev) => {
+          const newCompleted = [...prev];
+          newCompleted[stepIndex] = true;
+          return newCompleted;
+        });
 
         // 更新进度到当前步骤完成
         setProgress(stepProgressEnd);
 
-        // 短暂延迟，让用户看到步骤完成
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        // 延迟让用户看到步骤完成状态（打勾效果）
+        console.log(`=== 步骤 ${stepIndex} 完成，显示打勾状态，等待1.5秒 ===`);
+        await new Promise((resolve) => setTimeout(resolve, 1500)); // 增加延迟时间让用户看到打勾
+        console.log(`=== 步骤 ${stepIndex} 延迟结束，准备下一步 ===`);
       }
 
+      console.log(
+        `=== FOR循环结束 - 所有步骤执行完成，isCancelled: ${isCancelled} ===`
+      );
+
       if (!isCancelled) {
+        console.log("=== 所有步骤正常完成，设置分析完成状态 ===");
+        console.trace("setIsCompleted(true) 调用堆栈:");
         setProgress(100);
         setIsCompleted(true);
 
@@ -1193,10 +1276,9 @@ log_file = "app.log"
                   <div className="space-y-4">
                     {analysisSteps.map((step, index) => {
                       const Icon = step.icon;
-                      const isActive = index === currentStep;
-                      const isStepCompleted =
-                        index < currentStep ||
-                        (index === currentStep && progress === 100);
+                      const isActive =
+                        index === currentStep && !completedSteps[index];
+                      const isStepCompleted = completedSteps[index];
 
                       return (
                         <div

@@ -129,6 +129,7 @@ class AnalysisItemUpdate(BaseModel):
 
 # 创建路由器
 repository_router = APIRouter(prefix="/api/repository", tags=["仓库管理"])
+analysis_router = APIRouter(prefix="/api/analysis", tags=["分析管理"])
 
 
 @repository_router.get("/repositories/{repository_id}")
@@ -422,6 +423,65 @@ async def delete_analysis_task(
                 "status": "error",
                 "message": "删除分析任务时发生未知错误",
                 "task_id": task_id,
+                "error": str(e),
+            },
+        )
+
+
+@repository_router.get("/analysis-tasks/{task_id}")
+async def get_analysis_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    获取指定分析任务的详细信息
+
+    Args:
+        task_id: 分析任务ID
+        db: 数据库会话
+
+    Returns:
+        JSON响应包含分析任务的详细信息
+    """
+    try:
+        # 查询分析任务
+        task = db.query(AnalysisTask).filter(AnalysisTask.id == task_id).first()
+        if not task:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "status": "error",
+                    "message": f"未找到ID为 {task_id} 的分析任务",
+                },
+            )
+
+        # 返回任务信息
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "success",
+                "message": "获取分析任务信息成功",
+                "task": {
+                    "id": task.id,
+                    "status": task.status,
+                    "start_time": task.start_time.isoformat() if task.start_time else None,
+                    "end_time": task.end_time.isoformat() if task.end_time else None,
+                    "total_files": task.total_files or 0,
+                    "successful_files": task.successful_files or 0,
+                    "failed_files": task.failed_files or 0,
+                    "progress_percentage": task.progress_percentage or 0,
+                    "task_index": task.task_index,
+                },
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"获取分析任务信息时发生错误: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": "获取分析任务信息时发生未知错误",
                 "error": str(e),
             },
         )
@@ -953,7 +1013,7 @@ async def upload_repository(
         )
 
 
-@repository_router.post("/analysis-tasks/{task_id}/create-knowledge-base")
+@analysis_router.post("/{task_id}/create-knowledge-base")
 async def create_knowledge_base(
     task_id: int,
     db: Session = Depends(get_db),
@@ -1040,11 +1100,40 @@ async def create_knowledge_base(
         task.status = "running"
         db.commit()
 
-        # 在后台异步执行知识库创建
+        # 同步执行知识库创建flow，等待完成后返回结果
         try:
-            asyncio.create_task(create_kb_flow(task_id=task_id, local_path=repository.local_path, repo_info=repo_info))
+            logger.info(f"开始执行知识库创建flow，任务ID: {task_id}")
+            result = await create_kb_flow(task_id=task_id, local_path=repository.local_path, repo_info=repo_info)
+
+            # 检查flow执行结果
+            if result.get("status") == "knowledge_base_ready" and result.get("vectorstore_index"):
+                logger.info(f"知识库创建成功，索引: {result.get('vectorstore_index')}")
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "status": "success",
+                        "message": "知识库创建完成",
+                        "task_id": task_id,
+                        "task_status": "running",  # 保持running状态，等待后续步骤
+                        "vectorstore_index": result.get("vectorstore_index"),
+                    },
+                )
+            else:
+                logger.error(f"知识库创建失败: {result}")
+                # 回滚任务状态
+                task.status = "failed"
+                db.commit()
+                return JSONResponse(
+                    status_code=500,
+                    content={
+                        "status": "error",
+                        "message": f"知识库创建失败: {result.get('error', '未知错误')}",
+                        "task_id": task_id,
+                    },
+                )
+
         except Exception as e:
-            logger.error(f"启动知识库创建flow失败: {str(e)}")
+            logger.error(f"执行知识库创建flow失败: {str(e)}")
             # 回滚任务状态
             task.status = "failed"
             db.commit()
@@ -1052,20 +1141,10 @@ async def create_knowledge_base(
                 status_code=500,
                 content={
                     "status": "error",
-                    "message": f"启动知识库创建flow失败: {str(e)}",
+                    "message": f"执行知识库创建flow失败: {str(e)}",
                     "task_id": task_id,
                 },
             )
-
-        return JSONResponse(
-            status_code=202,  # 202 Accepted - 请求已接受，正在处理
-            content={
-                "status": "accepted",
-                "message": "知识库创建任务已启动",
-                "task_id": task_id,
-                "task_status": "running",
-            },
-        )
 
     except Exception as e:
         return JSONResponse(
@@ -1074,6 +1153,329 @@ async def create_knowledge_base(
                 "status": "error",
                 "message": "启动知识库创建时发生未知错误",
                 "task_id": task_id,
+                "error": str(e),
+            },
+        )
+
+
+@analysis_router.post("/{task_id}/analyze-data-model")
+async def analyze_data_model(
+    task_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    为指定任务执行分析数据模型
+
+    触发分析数据模型flow，包含代码分析和数据库更新
+
+    Args:
+        task_id: 分析任务ID
+        db: 数据库会话
+
+    Returns:
+        JSON响应包含分析数据模型状态和进度信息
+    """
+    try:
+        # 验证任务是否存在
+        task = db.query(AnalysisTask).filter(AnalysisTask.id == task_id).first()
+        if not task:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "status": "error",
+                    "message": f"未找到ID为 {task_id} 的分析任务",
+                    "task_id": task_id,
+                },
+            )
+
+        # 获取仓库信息
+        repository = db.query(Repository).filter(Repository.id == task.repository_id).first()
+        if not repository:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "status": "error",
+                    "message": f"未找到仓库ID为 {task.repository_id} 的仓库",
+                    "task_id": task_id,
+                },
+            )
+
+        # 检查任务状态
+        if task.status not in ["pending", "running", "completed"]:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "error",
+                    "message": f"任务状态为 {task.status}，无法执行分析数据模型",
+                    "task_id": task_id,
+                },
+            )
+
+        # 检查是否有知识库索引
+        if not task.task_index:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "error",
+                    "message": "任务缺少知识库索引，请先完成知识库创建",
+                    "task_id": task_id,
+                },
+            )
+
+        # 启动分析数据模型flow（异步执行）
+        import sys
+        from pathlib import Path
+
+        # 添加项目根目录到Python路径
+        project_root = Path(__file__).parent.parent
+        if str(project_root) not in sys.path:
+            sys.path.insert(0, str(project_root))
+
+        try:
+            from src.flows.web_flow import analyze_data_model as analyze_dm_flow
+        except ImportError as e:
+            logger.error(f"导入分析数据模型flow失败: {str(e)}")
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": f"导入分析数据模型flow失败: {str(e)}",
+                    "task_id": task_id,
+                },
+            )
+
+        # 更新任务状态为运行中
+        task.status = "running"
+        db.commit()
+
+        try:
+            logger.info(f"开始执行分析数据模型flow，任务ID: {task_id}")
+            result = await analyze_dm_flow(task_id=task_id, vectorstore_index=task.task_index)
+
+            # 检查flow执行结果
+            if result.get("status") == "analysis_completed":
+                analysis_items_count = result.get("analysis_items_count", 0)
+                total_files = result.get("total_files", 0)
+                successful_files = result.get("successful_files", 0)
+                failed_files = result.get("failed_files", 0)
+                success_rate = result.get("success_rate", "0%")
+
+                logger.info(
+                    f"分析数据模型完成: 总文件 {total_files}, 成功 {successful_files}, 失败 {failed_files}, 分析项 {analysis_items_count}"
+                )
+
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "status": "success",
+                        "message": result.get("message", "分析数据模型完成"),
+                        "task_id": task_id,
+                        "task_status": "running",  # 保持running状态，等待后续步骤
+                        "analysis_items_count": analysis_items_count,
+                        "total_files": total_files,
+                        "successful_files": successful_files,
+                        "failed_files": failed_files,
+                        "success_rate": success_rate,
+                        "analysis_results": result.get("analysis_results", []),
+                    },
+                )
+            else:
+                logger.error(f"分析数据模型失败: {result}")
+                # 回滚任务状态
+                task.status = "failed"
+                db.commit()
+                return JSONResponse(
+                    status_code=500,
+                    content={
+                        "status": "error",
+                        "message": f"分析数据模型失败: {result.get('error', '未知错误')}",
+                        "task_id": task_id,
+                        "error_details": result.get("message", ""),
+                    },
+                )
+
+        except Exception as e:
+            logger.error(f"执行分析数据模型flow失败: {str(e)}")
+            # 回滚任务状态
+            task.status = "failed"
+            db.commit()
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": f"执行分析数据模型flow失败: {str(e)}",
+                    "task_id": task_id,
+                },
+            )
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": "启动分析数据模型时发生未知错误",
+                "task_id": task_id,
+                "error": str(e),
+            },
+        )
+
+
+@analysis_router.post("/file/{file_id}/analyze-data-model")
+async def analyze_single_file_data_model(
+    file_id: int,
+    task_index: str = Query(..., description="任务索引"),
+    task_id: Optional[int] = Query(None, description="任务ID（可选，如果不提供则从文件分析记录中获取）"),
+    db: Session = Depends(get_db),
+):
+    """
+    为指定文件执行分析数据模型
+
+    触发单文件分析数据模型flow，包含代码分析和数据库更新
+
+    Args:
+        file_id: 文件分析ID
+        task_index: 任务索引（知识库索引）
+        db: 数据库会话
+
+    Returns:
+        JSON响应包含分析数据模型状态和进度信息
+    """
+    try:
+        # 验证文件分析记录是否存在
+        from backend.models import FileAnalysis
+
+        file_analysis = db.query(FileAnalysis).filter(FileAnalysis.id == file_id).first()
+        if not file_analysis:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "status": "error",
+                    "message": f"未找到ID为 {file_id} 的文件分析记录",
+                    "file_id": file_id,
+                },
+            )
+
+        # 获取关联的任务信息
+        task = db.query(AnalysisTask).filter(AnalysisTask.id == file_analysis.task_id).first()
+        if not task:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "status": "error",
+                    "message": f"未找到任务ID为 {file_analysis.task_id} 的分析任务",
+                    "file_id": file_id,
+                },
+            )
+
+        # 获取仓库信息
+        repository = db.query(Repository).filter(Repository.id == task.repository_id).first()
+        if not repository:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "status": "error",
+                    "message": f"未找到仓库ID为 {task.repository_id} 的仓库",
+                    "file_id": file_id,
+                },
+            )
+
+        # 检查文件分析状态
+        if file_analysis.status == "failed":
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "error",
+                    "message": f"文件分析状态为 {file_analysis.status}，无法执行分析数据模型",
+                    "file_id": file_id,
+                },
+            )
+
+        # 启动单文件分析数据模型flow（异步执行）
+        import sys
+        from pathlib import Path
+
+        # 添加项目根目录到Python路径
+        project_root = Path(__file__).parent.parent
+        if str(project_root) not in sys.path:
+            sys.path.insert(0, str(project_root))
+
+        try:
+            from src.flows.web_flow import analyze_single_file_data_model as analyze_single_file_flow
+        except ImportError as e:
+            logger.error(f"导入单文件分析数据模型flow失败: {str(e)}")
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": f"导入单文件分析数据模型flow失败: {str(e)}",
+                    "file_id": file_id,
+                },
+            )
+
+        # 更新文件分析状态为运行中
+        file_analysis.status = "running"
+        db.commit()
+
+        try:
+            # 使用传递的task_id或从数据库获取的task_id
+            actual_task_id = task_id if task_id is not None else task.id
+
+            # 执行单文件分析数据模型flow
+            result = await analyze_single_file_flow(
+                task_id=actual_task_id, file_id=file_id, vectorstore_index=task_index
+            )
+
+            # 检查flow执行结果
+            if result.get("status") == "completed":
+                analysis_items_count = result.get("analysis_items_count", 0)
+                logger.info(f"单文件分析数据模型成功，创建了 {analysis_items_count} 个分析项")
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "status": "success",
+                        "message": "单文件分析数据模型完成",
+                        "file_id": file_id,
+                        "file_path": file_analysis.file_path,
+                        "analysis_items_count": analysis_items_count,
+                    },
+                )
+            else:
+                logger.error(f"单文件分析数据模型失败: {result}")
+                # 回滚文件分析状态
+                file_analysis.status = "failed"
+                file_analysis.error_message = result.get("error", "未知错误")
+                db.commit()
+                return JSONResponse(
+                    status_code=500,
+                    content={
+                        "status": "error",
+                        "message": f"单文件分析数据模型失败: {result.get('error', '未知错误')}",
+                        "file_id": file_id,
+                    },
+                )
+
+        except Exception as e:
+            logger.error(f"执行单文件分析数据模型flow失败: {str(e)}")
+            # 回滚文件分析状态
+            file_analysis.status = "failed"
+            file_analysis.error_message = str(e)
+            db.commit()
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": f"执行单文件分析数据模型flow失败: {str(e)}",
+                    "file_id": file_id,
+                },
+            )
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": "启动单文件分析数据模型时发生未知错误",
+                "file_id": file_id,
                 "error": str(e),
             },
         )
@@ -1172,3 +1574,7 @@ async def delete_repository(
                 "error": str(e),
             },
         )
+
+
+# 导出路由器
+__all__ = ["repository_router", "analysis_router"]

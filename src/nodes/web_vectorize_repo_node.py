@@ -61,16 +61,20 @@ class WebVectorizeRepoNode(AsyncNode):
         try:
             # 1. 从后端API获取文件内容
             logger.info(f"📥 从API获取任务 {task_id} 的文件内容...")
+            await asyncio.sleep(1)  # 1秒延迟让用户看到开始状态
+
             documents = await self._fetch_documents_from_api(task_id)
 
             if not documents:
                 raise ValueError("未找到可向量化的文档")
 
             logger.info(f"📄 获取到 {len(documents)} 个文档")
+            await asyncio.sleep(1)  # 1秒延迟
 
             # 2. 创建向量知识库
             store_id = self._generate_store_id(repo_info)
             logger.info(f"🚀 开始为仓库 {store_id} 创建向量知识库")
+            await asyncio.sleep(2)  # 2秒延迟让用户看到创建过程
 
             index_name = await self._create_vector_store(documents, store_id)
 
@@ -78,6 +82,7 @@ class WebVectorizeRepoNode(AsyncNode):
                 raise ValueError("向量知识库创建失败")
 
             logger.info(f"✅ 向量知识库创建成功，索引: {index_name}")
+            await asyncio.sleep(1)  # 1秒延迟让用户看到完成状态
             return index_name
 
         except Exception as e:
