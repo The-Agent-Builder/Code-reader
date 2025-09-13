@@ -7,12 +7,13 @@ import CodeViewer from "./CodeViewer";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { api } from "../services/api";
 import { buildFileTree, sortFileTree, FileNode } from "../utils/fileTree";
+import { useProject } from "../contexts/ProjectContext";
 
 interface DeepWikiInterfaceProps {
   onBackToUpload: () => void;
   onGoToProfile: () => void;
   currentVersionId?: string;
-  projectName?: string;
+  fullNameHash?: string; // 改为fullNameHash，表示这是仓库的full_name哈希值
 }
 
 type ViewMode = "documentation" | "code";
@@ -21,8 +22,9 @@ export default function DeepWikiInterface({
   onBackToUpload,
   onGoToProfile,
   currentVersionId,
-  projectName,
+  fullNameHash,
 }: DeepWikiInterfaceProps) {
+  const { setCurrentRepository } = useProject();
   const [activeSection, setActiveSection] = useState("overview");
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [isFileExplorerVisible, setIsFileExplorerVisible] = useState(true);
@@ -37,6 +39,12 @@ export default function DeepWikiInterface({
   const [selectedFileAnalysisId, setSelectedFileAnalysisId] = useState<
     number | undefined
   >(undefined);
+  const [taskStatistics, setTaskStatistics] = useState<{
+    code_lines: number;
+    total_files: number;
+    module_count: number;
+  } | null>(null);
+  const [currentTaskId, setCurrentTaskId] = useState<number | null>(null);
 
   const handleFileSelect = (filePath: string) => {
     console.log("File selected:", filePath);
@@ -69,93 +77,104 @@ export default function DeepWikiInterface({
     setSelectedFile(null);
   };
 
-  // 数据加载函数
-  const loadProjectData = async (repoName: string) => {
-    if (!repoName) return;
+  // 数据加载函数 - 新的流程：通过full_name获取仓库信息
+  const loadProjectData = async (fullNameHash: string) => {
+    if (!fullNameHash) return;
 
     setIsLoading(true);
     setError(null);
 
     try {
-      // 1. 获取仓库信息和任务列表
-      console.log("Loading repository data for:", repoName);
-      const repoResponse = await api.getRepositoryByName(repoName, true, true);
+      // 1. 通过full_name获取仓库信息
+      console.log("Loading repository data for full_name:", fullNameHash);
+      const repoResponse = await api.getRepositoryByFullName(fullNameHash);
       console.log("Repository API response:", repoResponse);
 
-      if (repoResponse.status !== "success") {
-        throw new Error(`Repository "${repoName}" not found`);
+      if (repoResponse.status !== "success" || !repoResponse.repository) {
+        throw new Error(
+          `Repository with full_name "${fullNameHash}" not found`
+        );
       }
 
-      // 处理精确匹配和模糊匹配的不同响应格式
-      let repository;
-      if (repoResponse.repository) {
-        // 精确匹配返回单个repository对象
-        repository = repoResponse.repository;
-      } else if (
-        repoResponse.repositories &&
-        repoResponse.repositories.length > 0
-      ) {
-        // 模糊匹配返回repositories数组
-        repository = repoResponse.repositories[0];
-      } else {
-        throw new Error(`Repository "${repoName}" not found`);
-      }
-
+      const repository = repoResponse.repository;
       console.log("Repository data:", repository);
       setRepositoryInfo(repository);
+      // 同时设置到全局Context中，供TopNavigation使用
+      setCurrentRepository(repository);
 
-      // 2. 获取最新任务的文件列表
-      if (repository.tasks && repository.tasks.length > 0) {
-        console.log("All tasks:", repository.tasks);
+      // 2. 获取该仓库的分析任务列表
+      console.log("Loading analysis tasks for repository ID:", repository.id);
+      const tasksResponse = await api.getAnalysisTasksByRepositoryId(
+        repository.id
+      );
+      console.log("Tasks API response:", tasksResponse);
 
-        // 找到最新的任务（按start_time排序，后端已经按升序排列，所以取最后一个）
-        // 但我们也可以手动确认找到最新的
-        const latestTask = repository.tasks.reduce((latest, current) => {
-          const latestTime = new Date(latest.start_time).getTime();
-          const currentTime = new Date(current.start_time).getTime();
-          return currentTime > latestTime ? current : latest;
-        });
+      if (
+        tasksResponse.status !== "success" ||
+        !tasksResponse.tasks ||
+        tasksResponse.tasks.length === 0
+      ) {
+        console.warn("No analysis tasks found for this repository");
+        setIsLoading(false);
+        return;
+      }
 
-        console.log("Latest task found:", latestTask);
-        console.log("Loading files for task ID:", latestTask.id);
+      // 3. 找到最新的任务（按start_time排序，取最前面的）
+      const sortedTasks = tasksResponse.tasks.sort(
+        (a, b) =>
+          new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+      );
+      const latestTask = sortedTasks[0]; // 取排序最前面的任务
 
-        const filesResponse = await api.getFilesByTaskId(latestTask.id);
-        console.log("Files API response:", filesResponse);
+      console.log("Latest task found:", latestTask);
+      console.log("Loading files for task ID:", latestTask.id);
 
-        if (filesResponse.status === "success") {
-          if (
-            filesResponse.files &&
-            Array.isArray(filesResponse.files) &&
-            filesResponse.files.length > 0
-          ) {
-            // 3. 构建文件数据映射
-            const dataMap = new Map();
-            filesResponse.files.forEach((file: any) => {
-              // 统一路径格式：将反斜杠转换为正斜杠，与文件树保持一致
-              const normalizedPath = file.file_path.replace(/\\/g, "/");
-              dataMap.set(normalizedPath, file);
-            });
-            setFileDataMap(dataMap);
-            console.log("File data map built:", dataMap);
+      // 4. 设置当前任务ID
+      setCurrentTaskId(latestTask.id);
 
-            // 4. 构建文件树
-            console.log("Building file tree from files:", filesResponse.files);
-            const tree = buildFileTree(filesResponse.files);
-            sortFileTree(tree);
-            setFileTree(tree);
-            console.log("File tree built:", tree);
-          } else {
-            console.warn("No files found for task:", latestTask.id);
-            setFileTree(null);
-            setFileDataMap(new Map());
-          }
+      // 5. 提取任务统计信息
+      const statistics = {
+        code_lines: latestTask.code_lines || 0,
+        total_files: latestTask.total_files || 0,
+        module_count: latestTask.module_count || 0,
+      };
+      setTaskStatistics(statistics);
+      console.log("Task statistics:", statistics);
+
+      // 4. 获取该任务的文件列表
+      const filesResponse = await api.getFilesByTaskId(latestTask.id);
+      console.log("Files API response:", filesResponse);
+
+      if (filesResponse.status === "success") {
+        if (
+          filesResponse.files &&
+          Array.isArray(filesResponse.files) &&
+          filesResponse.files.length > 0
+        ) {
+          // 5. 构建文件数据映射
+          const dataMap = new Map();
+          filesResponse.files.forEach((file: any) => {
+            // 统一路径格式：将反斜杠转换为正斜杠，与文件树保持一致
+            const normalizedPath = file.file_path.replace(/\\/g, "/");
+            dataMap.set(normalizedPath, file);
+          });
+          setFileDataMap(dataMap);
+          console.log("File data map built:", dataMap);
+
+          // 6. 构建文件树
+          console.log("Building file tree from files:", filesResponse.files);
+          const tree = buildFileTree(filesResponse.files);
+          sortFileTree(tree);
+          setFileTree(tree);
+          console.log("File tree built:", tree);
         } else {
-          console.error("Files API returned error:", filesResponse);
-          throw new Error(filesResponse.message || "Failed to fetch files");
+          console.warn("No files found for task:", latestTask.id);
+          setFileTree(null);
+          setFileDataMap(new Map());
         }
       } else {
-        console.warn("No tasks found for repository:", repoName);
-        setFileTree(null);
+        console.error("Files API returned error:", filesResponse);
+        throw new Error(filesResponse.message || "Failed to fetch files");
       }
     } catch (err) {
       console.error("Error loading project data:", err);
@@ -167,12 +186,19 @@ export default function DeepWikiInterface({
     }
   };
 
-  // 当projectName改变时加载数据
+  // 当fullNameHash改变时加载数据
   useEffect(() => {
-    if (projectName && projectName !== "my-awesome-project") {
-      loadProjectData(projectName);
+    if (fullNameHash && fullNameHash !== "my-awesome-project") {
+      loadProjectData(fullNameHash);
     }
-  }, [projectName]);
+  }, [fullNameHash]);
+
+  // 组件卸载时清理Context状态
+  useEffect(() => {
+    return () => {
+      setCurrentRepository(null);
+    };
+  }, [setCurrentRepository]);
 
   return (
     <div className="h-full flex flex-col bg-white">
@@ -184,27 +210,32 @@ export default function DeepWikiInterface({
             <Sidebar
               activeSection={activeSection}
               onSectionChange={setActiveSection}
+              taskId={currentTaskId}
             />
           </aside>
         )}
 
         {/* Main Content Area */}
         <main
-          className={`flex-1 overflow-hidden ${
+          className={`flex-1 overflow-y-auto ${
             isFileExplorerVisible ? "mr-80" : ""
           }`}
         >
           {viewMode === "documentation" ? (
             <MainContent
               activeSection={activeSection}
+              onSectionChange={setActiveSection}
               onFileSelect={handleFileSelect}
-              projectName={projectName}
+              projectName={repositoryInfo?.name || fullNameHash}
+              taskStatistics={taskStatistics}
+              taskId={currentTaskId}
             />
           ) : (
             selectedFile && (
               <CodeViewer
                 filePath={selectedFile}
                 fileAnalysisId={selectedFileAnalysisId}
+                taskId={currentTaskId}
                 onBack={handleBackToDocumentation}
               />
             )
@@ -222,13 +253,9 @@ export default function DeepWikiInterface({
           <div className="flex items-center justify-between p-4 border-b border-gray-200">
             <div>
               <h3 className="font-medium text-gray-900">源代码浏览器</h3>
-              {projectName && projectName !== "my-awesome-project" && (
+              {fullNameHash && fullNameHash !== "my-awesome-project" && (
                 <p className="text-xs text-gray-500 mt-1">
-                  {repositoryInfo
-                    ? `${repositoryInfo.name} (${
-                        repositoryInfo.total_tasks || 0
-                      } tasks)`
-                    : projectName}
+                  {repositoryInfo ? `${repositoryInfo.name}` : fullNameHash}
                 </p>
               )}
             </div>

@@ -108,6 +108,11 @@ class Config:
         """后端 API Base URL"""
         return os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
 
+    @property
+    def readme_api_base_url(self) -> str:
+        """README API Base URL"""
+        return os.getenv("README_API_BASE_URL", "http://127.0.0.1:8001")
+
     # 应用配置
     @property
     def app_host(self) -> str:

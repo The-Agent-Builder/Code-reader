@@ -53,6 +53,9 @@ class Settings:
     RAG_BASE_URL: str = os.getenv("RAG_BASE_URL", "")
     RAG_BATCH_SIZE: int = int(os.getenv("RAG_BATCH_SIZE", 100))
 
+    # README API 配置
+    README_API_BASE_URL: str = os.getenv("README_API_BASE_URL", "http://127.0.0.1:8001")
+
     # 本地存储配置
     LOCAL_REPO_PATH: str = os.getenv("LOCAL_REPO_PATH", "./data/repos")
     RESULTS_PATH: str = os.getenv("RESULTS_PATH", "./data/results")

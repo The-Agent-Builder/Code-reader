@@ -386,6 +386,63 @@ export class ApiService {
     return this.request(`/api/repository/repositories?${params}`);
   }
 
+  // 根据仓库full_name获取仓库信息（新增）
+  async getRepositoryByFullName(fullName: string): Promise<{
+    status: string;
+    message: string;
+    search_field: string;
+    search_value: string;
+    repository?: {
+      id: number;
+      name: string;
+      full_name: string;
+      url: string;
+      description: string;
+      language: string;
+      created_at: string;
+      updated_at: string;
+      total_tasks?: number;
+      tasks?: Array<{
+        id: number;
+        repository_id: number;
+        status: string;
+        start_time: string;
+        end_time: string | null;
+        total_files: number;
+        successful_files: number;
+        failed_files: number;
+        analysis_config: any;
+      }>;
+    };
+  }> {
+    const params = new URLSearchParams({
+      full_name: fullName,
+    });
+
+    return this.request(`/api/repository/repositories?${params}`);
+  }
+
+  // 根据仓库ID获取分析任务列表（新增）
+  async getAnalysisTasksByRepositoryId(repositoryId: number): Promise<{
+    status: string;
+    message: string;
+    repository_id: number;
+    total_tasks: number;
+    tasks: Array<{
+      id: number;
+      repository_id: number;
+      status: string;
+      start_time: string;
+      end_time: string | null;
+      total_files: number;
+      successful_files: number;
+      failed_files: number;
+      analysis_config: any;
+    }>;
+  }> {
+    return this.request(`/api/repository/analysis-tasks/${repositoryId}`);
+  }
+
   // 根据任务ID获取文件列表（新增）
   async getFilesByTaskId(taskId: number): Promise<{
     status: string;
@@ -440,6 +497,42 @@ export class ApiService {
     );
     console.log(
       `Analysis items API response for file_analysis_id ${fileAnalysisId}:`,
+      response
+    );
+    return response;
+  }
+
+  // 获取文件详情内容
+  async getFileAnalysisDetail(
+    fileId: number,
+    taskId: number
+  ): Promise<{
+    status: string;
+    message: string;
+    file_analysis?: {
+      id: number;
+      file_id: number;
+      task_id: number;
+      code_content: string;
+      language: string;
+      code_lines: number;
+      file_path: string;
+      analysis_timestamp: string;
+      // 其他可能的字段
+    };
+  }> {
+    const params = new URLSearchParams({
+      task_id: taskId.toString(),
+    });
+
+    console.log(
+      `Making request to: /api/repository/file-analysis/${fileId}?${params}`
+    );
+    const response = await this.request(
+      `/api/repository/file-analysis/${fileId}?${params}`
+    );
+    console.log(
+      `File analysis detail API response for file_id ${fileId}, task_id ${taskId}:`,
       response
     );
     return response;
@@ -638,24 +731,49 @@ export class ApiService {
       task_index?: string;
     };
   }> {
-    const response = await fetch(
-      `${this.baseUrl}/api/repository/analysis-tasks/${taskId}`,
-      {
+    const url = `${this.baseUrl}/api/repository/analysis-tasks/${taskId}`;
+
+    console.log(`🔄 发送更新任务请求到: ${url}`);
+    console.log(`📝 更新数据:`, updateData);
+    console.log(`📋 任务ID: ${taskId}`);
+
+    try {
+      const response = await fetch(url, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(updateData),
+      });
+
+      console.log(`📡 响应状态: ${response.status} ${response.statusText}`);
+
+      if (!response.ok) {
+        // 尝试获取错误详情
+        let errorDetails;
+        try {
+          errorDetails = await response.json();
+          console.error(`❌ API错误响应:`, errorDetails);
+        } catch (e) {
+          errorDetails = { message: response.statusText };
+          console.error(`❌ 无法解析错误响应:`, e);
+        }
+
+        throw new Error(
+          `HTTP ${response.status}: ${
+            errorDetails.message || response.statusText
+          }`
+        );
       }
-    );
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const result = await response.json();
+      console.log(`✅ 更新任务成功:`, result);
+      return result;
+    } catch (error) {
+      console.error(`❌ 更新任务失败:`, error);
+      console.error(`🔍 请求详情: URL=${url}, 数据=`, updateData);
+      throw error;
     }
-
-    const result = await response.json();
-    console.log(`Update analysis task response:`, result);
-    return result;
   }
 
   // 获取任务队列状态
@@ -1067,6 +1185,270 @@ export class ApiService {
       };
     }
   }
+
+  // 根据任务ID获取README文档
+  async getTaskReadmeByTaskId(taskId: number): Promise<{
+    status: string;
+    message?: string;
+    task_id?: number;
+    readme?: {
+      id: number;
+      task_id: number;
+      content: string;
+      created_at: string;
+      updated_at: string;
+    };
+  }> {
+    try {
+      console.log(`获取任务 ${taskId} 的README文档...`);
+
+      const response = await fetch(
+        `${this.baseUrl}/api/repository/task-readmes/by-task/${taskId}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 30000, // 30秒超时
+        }
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`README文档获取成功:`, result);
+        return result;
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("README文档获取失败:", errorData);
+        return {
+          status: "error",
+          message: errorData.message || `HTTP ${response.status}`,
+        };
+      }
+    } catch (error) {
+      console.error("获取README文档时出错:", error);
+      return {
+        status: "error",
+        message: `获取README文档时出错: ${error}`,
+      };
+    }
+  }
+
+  // 生成文档结构 - 调用外部README API
+  async generateDocumentStructure(localPath: string): Promise<{
+    status: string;
+    message?: string;
+    task_id?: string;
+  }> {
+    try {
+      // 从环境变量获取README_API_BASE_URL
+      const readmeApiBaseUrl =
+        import.meta.env.README_API_BASE_URL || "http://127.0.0.1:8001";
+
+      console.log(`调用外部README API生成文档结构，本地路径: ${localPath}`);
+      console.log(`README API Base URL: ${readmeApiBaseUrl}`);
+
+      const requestData = {
+        local_path: localPath,
+        language: "zh",
+        provider: "openai",
+        model: "kimi-k2",
+        export_format: "markdown",
+        analysis_depth: "detailed",
+        include_code_examples: true,
+        generate_architecture_diagram: true,
+      };
+
+      const response = await fetch(`${readmeApiBaseUrl}/api/analyze/local`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestData),
+        timeout: 300000, // 5分钟超时
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`文档结构生成任务创建成功:`, result);
+        return {
+          status: "success",
+          task_id: result.task_id,
+          message: "文档结构生成任务已创建",
+        };
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("文档结构生成任务创建失败:", errorData);
+        return {
+          status: "error",
+          message: errorData.message || `HTTP ${response.status}`,
+        };
+      }
+    } catch (error) {
+      console.error("调用外部README API时出错:", error);
+      return {
+        status: "error",
+        message: `调用外部README API时出错: ${error}`,
+      };
+    }
+  }
+
+  // 检查文档生成状态
+  async checkDocumentGenerationStatus(readmeApiTaskId: string): Promise<{
+    status: string;
+    task_id?: string;
+    progress?: number;
+    current_stage?: string;
+    message?: string;
+    error?: string;
+    result?: {
+      markdown?: string;
+    };
+  }> {
+    try {
+      // 从环境变量获取README_API_BASE_URL
+      const readmeApiBaseUrl =
+        import.meta.env.README_API_BASE_URL || "http://127.0.0.1:8001";
+
+      console.log(`检查文档生成状态，任务ID: ${readmeApiTaskId}`);
+
+      const response = await fetch(
+        `${readmeApiBaseUrl}/api/analyze/local/${readmeApiTaskId}/status`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 30000, // 30秒超时
+        }
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`文档生成状态检查成功:`, result);
+        return result;
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("文档生成状态检查失败:", errorData);
+        return {
+          status: "error",
+          message: errorData.message || `HTTP ${response.status}`,
+        };
+      }
+    } catch (error) {
+      console.error("检查文档生成状态时出错:", error);
+      return {
+        status: "error",
+        message: `检查文档生成状态时出错: ${error}`,
+      };
+    }
+  }
+
+  // 创建任务README
+  async createTaskReadme(
+    taskId: number,
+    content: string
+  ): Promise<{
+    status: string;
+    message?: string;
+    readme?: {
+      id: number;
+      task_id: number;
+      content: string;
+      created_at: string;
+      updated_at: string;
+    };
+  }> {
+    try {
+      console.log(`创建任务 ${taskId} 的README文档...`);
+
+      const requestData = {
+        task_id: taskId,
+        content: content,
+      };
+
+      const response = await fetch(
+        `${this.baseUrl}/api/repository/task-readmes`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(requestData),
+          timeout: 30000, // 30秒超时
+        }
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`README文档创建成功:`, result);
+        return result;
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("README文档创建失败:", errorData);
+        return {
+          status: "error",
+          message: errorData.message || `HTTP ${response.status}`,
+        };
+      }
+    } catch (error) {
+      console.error("创建README文档时出错:", error);
+      return {
+        status: "error",
+        message: `创建README文档时出错: ${error}`,
+      };
+    }
+  }
+
+  // 获取仓库信息
+  async getRepositoryById(repositoryId: number): Promise<{
+    status: string;
+    message?: string;
+    repository?: {
+      id: number;
+      name: string;
+      full_name: string;
+      local_path: string;
+      absolute_local_path?: string;
+      status: number;
+      created_at: string;
+      updated_at: string;
+    };
+  }> {
+    try {
+      console.log(`获取仓库 ${repositoryId} 的信息...`);
+
+      const response = await fetch(
+        `${this.baseUrl}/api/repository/repositories/${repositoryId}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 30000, // 30秒超时
+        }
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`仓库信息获取成功:`, result);
+        return result;
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("仓库信息获取失败:", errorData);
+        return {
+          status: "error",
+          message: errorData.message || `HTTP ${response.status}`,
+        };
+      }
+    } catch (error) {
+      console.error("获取仓库信息时出错:", error);
+      return {
+        status: "error",
+        message: `获取仓库信息时出错: ${error}`,
+      };
+    }
+  }
 }
 
 // 默认API服务实例
@@ -1107,6 +1489,10 @@ export const api = {
     exactMatch?: boolean,
     includeTasks?: boolean
   ) => apiService.getRepositoryByName(name, exactMatch, includeTasks),
+  getRepositoryByFullName: (fullName: string) =>
+    apiService.getRepositoryByFullName(fullName),
+  getAnalysisTasksByRepositoryId: (repositoryId: number) =>
+    apiService.getAnalysisTasksByRepositoryId(repositoryId),
   getFilesByTaskId: (taskId: number) => apiService.getFilesByTaskId(taskId),
   getAnalysisItemsByFileId: (fileAnalysisId: number) =>
     apiService.getAnalysisItemsByFileId(fileAnalysisId),
@@ -1137,6 +1523,10 @@ export const api = {
   createFileAnalysis: (
     fileData: Parameters<ApiService["createFileAnalysis"]>[0]
   ) => apiService.createFileAnalysis(fileData),
+  getAnalysisItemsByFileId: (fileAnalysisId: number) =>
+    apiService.getAnalysisItemsByFileId(fileAnalysisId),
+  getFileAnalysisDetail: (fileId: number, taskId: number) =>
+    apiService.getFileAnalysisDetail(fileId, taskId),
 
   // 队列相关
   getQueueStatus: () => apiService.getQueueStatus(),
@@ -1161,6 +1551,22 @@ export const api = {
   // 分析数据模型flow
   analyzeDataModelFlow: (taskId: number) =>
     apiService.analyzeDataModelFlow(taskId),
+
+  // 获取任务README文档
+  getTaskReadmeByTaskId: (taskId: number) =>
+    apiService.getTaskReadmeByTaskId(taskId),
+
+  // 生成文档结构相关
+  generateDocumentStructure: (localPath: string) =>
+    apiService.generateDocumentStructure(localPath),
+  checkDocumentGenerationStatus: (readmeApiTaskId: string) =>
+    apiService.checkDocumentGenerationStatus(readmeApiTaskId),
+  createTaskReadme: (taskId: number, content: string) =>
+    apiService.createTaskReadme(taskId, content),
+
+  // 仓库信息相关
+  getRepositoryById: (repositoryId: number) =>
+    apiService.getRepositoryById(repositoryId),
 };
 
 export default api;

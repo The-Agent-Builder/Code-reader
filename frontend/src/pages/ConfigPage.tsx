@@ -17,6 +17,7 @@ interface FileInfo {
   type: string;
   lastModified: number;
   webkitRelativePath: string;
+  content: string; // base64编码的文件内容
 }
 
 export default function ConfigPage() {
@@ -45,21 +46,33 @@ export default function ConfigPage() {
       // 在实际应用中，你可能需要保持文件在内存中或使用其他状态管理方案
       const dataTransfer = new DataTransfer();
 
-      // 为每个文件信息创建一个模拟的File对象
+      // 为每个文件信息创建一个包含实际内容的File对象
       filesInfo.forEach((fileInfo) => {
-        // 创建一个小的Blob作为占位符，然后手动设置size属性
-        const blob = new Blob([""], { type: fileInfo.type });
+        // 从base64解码文件内容
+        let fileContent: Uint8Array;
+        try {
+          if (fileInfo.content) {
+            const binaryString = atob(fileInfo.content);
+            fileContent = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              fileContent[i] = binaryString.charCodeAt(i);
+            }
+          } else {
+            fileContent = new Uint8Array(0); // 空内容
+          }
+        } catch (error) {
+          console.error(`解码文件内容失败 ${fileInfo.name}:`, error);
+          fileContent = new Uint8Array(0); // 解码失败时使用空内容
+        }
+
+        // 创建包含实际内容的Blob和File对象
+        const blob = new Blob([fileContent], { type: fileInfo.type });
         const file = new File([blob], fileInfo.name, {
           type: fileInfo.type,
           lastModified: fileInfo.lastModified,
         });
 
-        // 手动设置文件大小属性
-        Object.defineProperty(file, "size", {
-          value: fileInfo.size,
-          writable: false,
-          configurable: false,
-        });
+        // 注意：不再需要手动设置size属性，因为File对象会自动从Blob获取正确的大小
 
         // 设置webkitRelativePath（如果支持的话）
         if (fileInfo.webkitRelativePath) {
@@ -82,6 +95,7 @@ export default function ConfigPage() {
           size: file.size,
           type: file.type,
           webkitRelativePath: (file as any).webkitRelativePath,
+          hasContent: file.size > 0, // 检查是否有内容
         });
       });
 

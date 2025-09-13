@@ -112,6 +112,36 @@ class AnalysisItem(Base):
         }
 
 
+class TaskReadme(Base):
+    """任务README表模型"""
+
+    __tablename__ = "task_readmes"
+
+    id = Column(Integer, primary_key=True, index=True, comment="readme仓库ID")
+    task_id = Column(Integer, ForeignKey("analysis_tasks.id"), index=True, nullable=False, comment="任务ID")
+    content = Column(Text, nullable=False, comment="readme的完整内容")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), comment="创建时间")
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        comment="更新时间",
+    )
+
+    def __repr__(self):
+        return f"<TaskReadme(id={self.id}, task_id={self.task_id})>"
+
+    def to_dict(self):
+        """转换为字典格式"""
+        return {
+            "id": self.id,
+            "task_id": self.task_id,
+            "content": self.content,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 class Repository(Base):
     """
     仓库表模型 - 根据实际数据库表结构定义

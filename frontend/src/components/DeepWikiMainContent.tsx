@@ -1,57 +1,377 @@
+import { useState, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
+import { api } from "../services/api";
+
+interface TaskStatistics {
+  code_lines: number;
+  total_files: number;
+  module_count: number;
+}
 
 interface MainContentProps {
   activeSection: string;
+  onSectionChange: (section: string) => void;
   onFileSelect: (file: string) => void;
   projectName?: string;
+  taskStatistics?: TaskStatistics | null;
+  taskId?: number | null;
 }
+
+// 生成标题ID（与Sidebar中的逻辑保持一致）
+const generateSectionId = (title: string): string => {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fa5\s]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/^-+|-+$/g, ""); // 移除开头和结尾的连字符
+};
 
 export function MainContent({
   activeSection,
+  onSectionChange,
   onFileSelect,
   projectName,
+  taskStatistics,
+  taskId,
 }: MainContentProps) {
-  const renderContent = () => {
-    switch (activeSection) {
-      case "overview":
-      case "metrics":
-        return (
-          <div className="space-y-8">
-            {/* 项目概述 */}
-            <div>
-              <h1>{projectName ? `${projectName} - 项目概览` : "项目概览"}</h1>
-              <p className="text-gray-600 mt-2">
-                {projectName
-                  ? `${projectName} 项目的详细分析和文档。`
-                  : "这是一个基于 Python 的 Web 应用程序，采用 Flask 框架构建。本应用提供了完整的用户认证系统和内容管理功能，采用现代化的架构设计和最佳实践。"}
-              </p>
-            </div>
+  const [markdownContent, setMarkdownContent] = useState<string>("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-            {/* 关键指标 */}
-            <div>
-              <h2 className="mb-4">关键指标</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="p-4">
-                  <h3>代码行数</h3>
-                  <p className="text-2xl font-bold text-blue-600">12,450</p>
-                  <p className="text-sm text-gray-500">Python 代码</p>
-                </Card>
-                <Card className="p-4">
-                  <h3>文件数量</h3>
-                  <p className="text-2xl font-bold text-green-600">156</p>
-                  <p className="text-sm text-gray-500">源代码文件</p>
-                </Card>
-                <Card className="p-4">
-                  <h3>模块数量</h3>
-                  <p className="text-2xl font-bold text-purple-600">23</p>
-                  <p className="text-sm text-gray-500">Python 模块</p>
-                </Card>
-              </div>
+  // 加载README文档
+  const loadReadmeContent = async (taskId: number) => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      console.log("Loading README for task:", taskId);
+      const response = await api.getTaskReadmeByTaskId(taskId);
+
+      if (response.status === "success" && response.readme) {
+        setMarkdownContent(response.readme.content);
+        console.log("README content loaded successfully");
+      } else {
+        setError("未找到README文档");
+        setMarkdownContent("");
+      }
+    } catch (err) {
+      console.error("Error loading README:", err);
+      setError("加载README文档失败");
+      setMarkdownContent("");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 当taskId改变时加载README
+  useEffect(() => {
+    if (taskId) {
+      loadReadmeContent(taskId);
+    } else {
+      setMarkdownContent("");
+    }
+  }, [taskId]);
+
+  // 滚动到指定的标题位置
+  const scrollToSection = (sectionId: string) => {
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
+  };
+
+  // 当activeSection改变时，滚动到对应位置
+  useEffect(() => {
+    if (activeSection && activeSection !== "overview" && markdownContent) {
+      // 延迟一点时间确保DOM已经渲染
+      setTimeout(() => {
+        scrollToSection(activeSection);
+      }, 100);
+    }
+  }, [activeSection, markdownContent]);
+
+  // 监听滚动事件，同步高亮左侧导航
+  useEffect(() => {
+    if (!markdownContent || activeSection === "overview") return;
+
+    const handleScroll = () => {
+      // 获取滚动容器（main元素）
+      const scrollContainer = document.querySelector("main");
+      if (!scrollContainer) return;
+
+      // 获取所有标题元素
+      const headings = document.querySelectorAll("h1[id], h2[id]");
+      const scrollTop = scrollContainer.scrollTop;
+      const containerRect = scrollContainer.getBoundingClientRect();
+
+      let currentSection = "";
+
+      // 找到当前可见的标题
+      for (let i = headings.length - 1; i >= 0; i--) {
+        const heading = headings[i] as HTMLElement;
+        const rect = heading.getBoundingClientRect();
+
+        // 计算标题相对于滚动容器的位置
+        const relativeTop = rect.top - containerRect.top;
+
+        // 如果标题在视口上方或刚好在视口顶部附近
+        if (relativeTop <= 100) {
+          currentSection = heading.id;
+          break;
+        }
+      }
+
+      // 如果找到了当前section且与activeSection不同，则更新
+      if (currentSection && currentSection !== activeSection) {
+        onSectionChange(currentSection);
+      }
+    };
+
+    // 获取滚动容器
+    const scrollContainer = document.querySelector("main");
+    if (!scrollContainer) return;
+
+    // 添加滚动监听
+    scrollContainer.addEventListener("scroll", handleScroll, { passive: true });
+
+    // 清理函数
+    return () => {
+      scrollContainer.removeEventListener("scroll", handleScroll);
+    };
+  }, [markdownContent, activeSection, onSectionChange]);
+  const renderContent = () => {
+    // 如果是项目概览，显示固定的概览内容
+    if (activeSection === "overview") {
+      return (
+        <div className="space-y-8">
+          {/* 项目概述 */}
+          <div>
+            <h1>{projectName ? `${projectName} - 项目概览` : "项目概览"}</h1>
+            <p className="text-gray-600 mt-2">
+              {projectName
+                ? `${projectName} 项目的详细分析和文档。`
+                : "这是一个基于 Python 的 Web 应用程序，采用 Flask 框架构建。本应用提供了完整的用户认证系统和内容管理功能，采用现代化的架构设计和最佳实践。"}
+            </p>
+          </div>
+
+          {/* 关键指标 */}
+          <div>
+            <h2 className="mb-4">关键指标</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card className="p-4">
+                <h3>代码行数</h3>
+                <p className="text-2xl font-bold text-blue-600">
+                  {taskStatistics?.code_lines?.toLocaleString() || "加载中..."}
+                </p>
+                <p className="text-sm text-gray-500">代码行数</p>
+              </Card>
+              <Card className="p-4">
+                <h3>文件数量</h3>
+                <p className="text-2xl font-bold text-green-600">
+                  {taskStatistics?.total_files?.toLocaleString() || "加载中..."}
+                </p>
+                <p className="text-sm text-gray-500">源代码文件</p>
+              </Card>
+              <Card className="p-4">
+                <h3>模块数量</h3>
+                <p className="text-2xl font-bold text-purple-600">
+                  {taskStatistics?.module_count?.toLocaleString() ||
+                    "加载中..."}
+                </p>
+                <p className="text-sm text-gray-500">模块数量</p>
+              </Card>
             </div>
           </div>
-        );
+        </div>
+      );
+    }
 
+    // 如果有markdown内容，显示完整的文档
+    if (markdownContent && activeSection !== "overview") {
+      return (
+        <div className="space-y-6 p-6">
+          {isLoading && (
+            <div className="flex items-center justify-center py-8">
+              <div className="text-gray-500">加载文档中...</div>
+            </div>
+          )}
+
+          {error && <div className="text-red-500 py-4">{error}</div>}
+
+          {!isLoading && !error && (
+            <div className="markdown-content max-w-none">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  // 自定义标题样式，添加ID用于导航定位
+                  h1: ({ children, ...props }) => {
+                    const text = children?.toString() || "";
+                    const id = generateSectionId(text);
+                    return (
+                      <h1
+                        id={id}
+                        className="text-3xl font-bold text-gray-900 mb-6 border-b border-gray-200 pb-3 scroll-mt-4"
+                        {...props}
+                      >
+                        {children}
+                      </h1>
+                    );
+                  },
+                  h2: ({ children, ...props }) => {
+                    const text = children?.toString() || "";
+                    const id = generateSectionId(text);
+                    return (
+                      <h2
+                        id={id}
+                        className="text-2xl font-semibold text-gray-800 mb-4 mt-8 scroll-mt-4"
+                        {...props}
+                      >
+                        {children}
+                      </h2>
+                    );
+                  },
+                  h3: ({ children, ...props }) => (
+                    <h3
+                      className="text-xl font-medium text-gray-700 mb-3 mt-6"
+                      {...props}
+                    >
+                      {children}
+                    </h3>
+                  ),
+                  // 自定义段落样式
+                  p: ({ children, ...props }) => (
+                    <p
+                      className="text-gray-700 leading-relaxed mb-4"
+                      {...props}
+                    >
+                      {children}
+                    </p>
+                  ),
+                  // 自定义列表样式
+                  ul: ({ children, ...props }) => (
+                    <ul
+                      className="list-disc list-inside mb-4 space-y-2 text-gray-700"
+                      {...props}
+                    >
+                      {children}
+                    </ul>
+                  ),
+                  ol: ({ children, ...props }) => (
+                    <ol
+                      className="list-decimal list-inside mb-4 space-y-2 text-gray-700"
+                      {...props}
+                    >
+                      {children}
+                    </ol>
+                  ),
+                  li: ({ children, ...props }) => (
+                    <li className="ml-4" {...props}>
+                      {children}
+                    </li>
+                  ),
+                  // 自定义链接渲染，处理文件链接
+                  a: ({ href, children, ...props }) => {
+                    if (href && href.endsWith(".py")) {
+                      return (
+                        <button
+                          className="text-blue-600 hover:text-blue-800 underline font-medium"
+                          onClick={() => onFileSelect(href)}
+                          {...props}
+                        >
+                          {children}
+                        </button>
+                      );
+                    }
+                    return (
+                      <a
+                        href={href}
+                        {...props}
+                        className="text-blue-600 hover:text-blue-800 underline"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {children}
+                      </a>
+                    );
+                  },
+                  // 自定义代码块样式
+                  code: ({ className, children, ...props }) => {
+                    const isInline = !className;
+                    return (
+                      <code
+                        className={`${className} ${
+                          isInline
+                            ? "bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono text-gray-800"
+                            : ""
+                        }`}
+                        {...props}
+                      >
+                        {children}
+                      </code>
+                    );
+                  },
+                  // 自定义预格式化代码块
+                  pre: ({ children, ...props }) => {
+                    return (
+                      <pre
+                        className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto mb-4 text-sm font-mono"
+                        {...props}
+                      >
+                        {children}
+                      </pre>
+                    );
+                  },
+                  // 自定义引用块
+                  blockquote: ({ children, ...props }) => (
+                    <blockquote
+                      className="border-l-4 border-blue-500 pl-4 py-2 mb-4 bg-blue-50 text-gray-700 italic"
+                      {...props}
+                    >
+                      {children}
+                    </blockquote>
+                  ),
+                  // 自定义表格
+                  table: ({ children, ...props }) => (
+                    <div className="overflow-x-auto mb-4">
+                      <table
+                        className="min-w-full border border-gray-300"
+                        {...props}
+                      >
+                        {children}
+                      </table>
+                    </div>
+                  ),
+                  th: ({ children, ...props }) => (
+                    <th
+                      className="border border-gray-300 px-4 py-2 bg-gray-100 font-semibold text-left"
+                      {...props}
+                    >
+                      {children}
+                    </th>
+                  ),
+                  td: ({ children, ...props }) => (
+                    <td className="border border-gray-300 px-4 py-2" {...props}>
+                      {children}
+                    </td>
+                  ),
+                }}
+              >
+                {markdownContent}
+              </ReactMarkdown>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // 默认情况，显示原有的静态内容
+    switch (activeSection) {
       case "data-models":
       case "entity-diagram":
         return (

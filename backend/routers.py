@@ -6,11 +6,19 @@ from fastapi import APIRouter, Depends, Query, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from database import get_db
-from services import FileAnalysisService, AnalysisItemService, RepositoryService, AnalysisTaskService, UploadService
+from services import (
+    FileAnalysisService,
+    AnalysisItemService,
+    RepositoryService,
+    AnalysisTaskService,
+    UploadService,
+    TaskReadmeService,
+)
 from models import AnalysisTask, Repository
 from typing import Optional, List
 from pydantic import BaseModel, Field
 import logging
+import os
 
 # 设置logger
 logger = logging.getLogger(__name__)
@@ -127,6 +135,20 @@ class AnalysisItemUpdate(BaseModel):
     end_line: Optional[int] = Field(None, description="结束行号")
 
 
+class TaskReadmeCreate(BaseModel):
+    """创建任务README的请求模型"""
+
+    task_id: int = Field(..., description="任务ID")
+    content: str = Field(..., min_length=1, description="readme的完整内容")
+
+
+class TaskReadmeUpdate(BaseModel):
+    """更新任务README的请求模型"""
+
+    task_id: Optional[int] = Field(None, description="任务ID")
+    content: Optional[str] = Field(None, min_length=1, description="readme的完整内容")
+
+
 # 创建路由器
 repository_router = APIRouter(prefix="/api/repository", tags=["仓库管理"])
 analysis_router = APIRouter(prefix="/api/analysis", tags=["分析管理"])
@@ -159,6 +181,31 @@ async def get_repository_by_id(
         if not result.get("repository"):
             return JSONResponse(status_code=404, content=result)
 
+        # 如果成功获取到仓库信息，处理路径转换
+        if result["status"] == "success" and result.get("repository"):
+            repository = result["repository"]
+            local_path = repository.get("local_path", "")
+
+            # 检查是否为相对路径，如果是则转换为绝对路径
+            if local_path and not os.path.isabs(local_path):
+                # 相对路径转换为绝对路径
+                # 获取当前文件的绝对路径，然后向上两级得到项目根目录
+                current_file = os.path.abspath(__file__)  # backend/routers.py
+                backend_dir = os.path.dirname(current_file)  # backend/
+                project_root = os.path.dirname(backend_dir)  # Code-reader/
+
+                # 数据库中存储的路径通常是相对于项目根目录的
+                # 例如: ../data/repos/fcb4af8be6d3bc8f5da20e6c2e746b6b
+                # 这个路径是相对于 backend/ 目录的，所以我们从 backend 目录开始解析
+                absolute_path = os.path.abspath(os.path.join(backend_dir, local_path))
+
+                repository["absolute_local_path"] = absolute_path
+                logger.info(f"路径转换: {local_path} -> {absolute_path}")
+                logger.info(f"项目根目录: {project_root}")
+                logger.info(f"后端目录: {backend_dir}")
+            else:
+                repository["absolute_local_path"] = local_path
+
         return JSONResponse(status_code=200, content=result)
 
     except Exception as e:
@@ -174,23 +221,56 @@ async def get_repository_by_id(
 
 
 @repository_router.get("/repositories")
-async def get_repository_by_name(
-    name: str = Query(..., description="仓库名称（精确匹配）"),
+async def get_repository_by_name_or_full_name(
+    name: Optional[str] = Query(None, description="仓库名称（精确匹配）"),
+    full_name: Optional[str] = Query(None, description="完整仓库名（精确匹配）"),
     db: Session = Depends(get_db),
 ):
     """
-    根据仓库名称精确查询仓库信息
+    根据仓库名称或完整仓库名精确查询仓库信息
 
     Args:
-        name: 仓库名称（精确匹配）
+        name: 仓库名称（精确匹配，可选）
+        full_name: 完整仓库名（精确匹配，可选）
         db: 数据库会话
 
     Returns:
         JSON响应包含仓库信息
+
+    Note:
+        name 和 full_name 至少需要提供一个参数
     """
     try:
-        # 精确匹配查询
-        result = RepositoryService.get_repository_by_exact_name(name, db, include_tasks=False)
+        # 验证参数
+        if not name and not full_name:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "error",
+                    "message": "请提供 name 或 full_name 参数进行查询",
+                },
+            )
+
+        # 根据提供的参数进行查询
+        if name and full_name:
+            # 如果同时提供了两个参数，优先使用 full_name
+            result = RepositoryService.get_repository_by_name_or_full_name(
+                name=None, full_name=full_name, db=db, include_tasks=False
+            )
+            search_field = "full_name"
+            search_value = full_name
+        elif full_name:
+            result = RepositoryService.get_repository_by_name_or_full_name(
+                name=None, full_name=full_name, db=db, include_tasks=False
+            )
+            search_field = "full_name"
+            search_value = full_name
+        else:
+            result = RepositoryService.get_repository_by_name_or_full_name(
+                name=name, full_name=None, db=db, include_tasks=False
+            )
+            search_field = "name"
+            search_value = name
 
         if result["status"] == "error":
             return JSONResponse(status_code=500, content=result)
@@ -206,7 +286,8 @@ async def get_repository_by_name(
             content={
                 "status": "error",
                 "message": "查询仓库信息时发生未知错误",
-                "search_name": name,
+                "search_field": search_field if "search_field" in locals() else "unknown",
+                "search_value": search_value if "search_value" in locals() else "unknown",
                 "error": str(e),
             },
         )
@@ -1571,6 +1652,216 @@ async def delete_repository(
                 "status": "error",
                 "message": "删除仓库时发生未知错误",
                 "repository_id": repository_id,
+                "error": str(e),
+            },
+        )
+
+
+# Task README 相关路由
+@repository_router.post("/task-readmes")
+async def create_task_readme(
+    readme_data: TaskReadmeCreate,
+    db: Session = Depends(get_db),
+):
+    """
+    创建任务README
+
+    Args:
+        readme_data: README创建数据
+        db: 数据库会话
+
+    Returns:
+        JSON响应包含创建的README信息
+    """
+    try:
+        # 转换为字典
+        data_dict = readme_data.model_dump()
+
+        # 创建README
+        result = TaskReadmeService.create_task_readme(data_dict, db)
+
+        if result["status"] == "error":
+            return JSONResponse(status_code=400, content=result)
+
+        return JSONResponse(status_code=201, content=result)
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": "创建README时发生未知错误",
+                "error": str(e),
+            },
+        )
+
+
+@repository_router.get("/task-readmes/{readme_id}")
+async def get_task_readme_by_id(
+    readme_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    根据README ID获取README详细信息
+
+    Args:
+        readme_id: README ID
+        db: 数据库会话
+
+    Returns:
+        JSON响应包含README详细信息
+    """
+    try:
+        # 获取README信息
+        result = TaskReadmeService.get_task_readme_by_id(readme_id, db)
+
+        if result["status"] == "error":
+            return JSONResponse(status_code=500, content=result)
+
+        if not result.get("readme"):
+            return JSONResponse(status_code=404, content=result)
+
+        return JSONResponse(status_code=200, content=result)
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": "获取README信息时发生未知错误",
+                "readme_id": readme_id,
+                "error": str(e),
+            },
+        )
+
+
+@repository_router.get("/task-readmes/by-task/{task_id}")
+async def get_task_readme_by_task_id(
+    task_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    根据任务ID获取README信息
+
+    Args:
+        task_id: 任务ID
+        db: 数据库会话
+
+    Returns:
+        JSON响应包含README信息
+    """
+    try:
+        # 获取README信息
+        result = TaskReadmeService.get_task_readme_by_task_id(task_id, db)
+
+        if result["status"] == "error":
+            return JSONResponse(status_code=500, content=result)
+
+        if not result.get("readme"):
+            return JSONResponse(status_code=404, content=result)
+
+        return JSONResponse(status_code=200, content=result)
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": "获取README信息时发生未知错误",
+                "task_id": task_id,
+                "error": str(e),
+            },
+        )
+
+
+@repository_router.put("/task-readmes/{readme_id}")
+async def update_task_readme(
+    readme_id: int,
+    readme_data: TaskReadmeUpdate,
+    db: Session = Depends(get_db),
+):
+    """
+    更新README信息
+
+    Args:
+        readme_id: README ID
+        readme_data: README更新数据
+        db: 数据库会话
+
+    Returns:
+        JSON响应包含更新后的README信息
+    """
+    try:
+        # 转换为字典，排除None值
+        data_dict = readme_data.model_dump(exclude_none=True)
+
+        if not data_dict:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "error",
+                    "message": "没有提供要更新的字段",
+                    "readme_id": readme_id,
+                },
+            )
+
+        # 更新README
+        result = TaskReadmeService.update_task_readme(readme_id, data_dict, db)
+
+        if result["status"] == "error":
+            if "未找到" in result["message"]:
+                return JSONResponse(status_code=404, content=result)
+            else:
+                return JSONResponse(status_code=400, content=result)
+
+        return JSONResponse(status_code=200, content=result)
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": "更新README时发生未知错误",
+                "readme_id": readme_id,
+                "error": str(e),
+            },
+        )
+
+
+@repository_router.delete("/task-readmes/{readme_id}")
+async def delete_task_readme(
+    readme_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    删除README
+
+    Args:
+        readme_id: README ID
+        db: 数据库会话
+
+    Returns:
+        JSON响应包含删除结果
+    """
+    try:
+        # 删除README
+        result = TaskReadmeService.delete_task_readme(readme_id, db)
+
+        if result["status"] == "error":
+            if "未找到" in result["message"]:
+                return JSONResponse(status_code=404, content=result)
+            else:
+                return JSONResponse(status_code=500, content=result)
+
+        return JSONResponse(status_code=200, content=result)
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": "删除README时发生未知错误",
+                "readme_id": readme_id,
                 "error": str(e),
             },
         )

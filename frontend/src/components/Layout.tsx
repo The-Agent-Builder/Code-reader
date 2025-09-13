@@ -13,11 +13,17 @@ interface ProjectVersion {
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { getProjectUrl } = useProject();
+  const { getProjectUrl, currentRepository } = useProject();
   const [currentVersionId, setCurrentVersionId] = useState<string>("v3");
 
-  // 从当前路径中提取项目名称
+  // 获取项目名称 - 优先使用Context中的仓库名称，否则从路径提取
   const getProjectNameFromPath = () => {
+    // 如果有仓库信息，使用仓库名称
+    if (currentRepository && currentRepository.name) {
+      return currentRepository.name;
+    }
+
+    // 否则从路径提取（作为后备）
     const path = location.pathname;
     const match = path.match(/^\/result\/(.+)$/);
     return match ? match[1] : "my-awesome-project";
@@ -121,7 +127,22 @@ export default function Layout() {
   };
 
   const handleAnalysisComplete = () => {
-    navigate(getProjectUrl());
+    // 尝试从sessionStorage获取MD5信息
+    const taskInfo = sessionStorage.getItem("currentTaskInfo");
+    let targetUrl = getProjectUrl();
+
+    if (taskInfo) {
+      try {
+        const parsedTaskInfo = JSON.parse(taskInfo);
+        if (parsedTaskInfo.md5DirectoryName) {
+          targetUrl = `/result/${parsedTaskInfo.md5DirectoryName}`;
+        }
+      } catch (error) {
+        console.error("解析任务信息失败:", error);
+      }
+    }
+
+    navigate(targetUrl);
     // 分析完成后创建新版本，并增加全局计数
     setCurrentVersionId("v3");
     setTotalAnalyzedProjects((prev) => prev + 1);

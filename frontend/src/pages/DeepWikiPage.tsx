@@ -23,7 +23,7 @@ export default function DeepWikiPage() {
       onBackToUpload={handleBackToUpload}
       onGoToProfile={handleGoToProfile}
       currentVersionId={currentVersionId}
-      projectName={projectName}
+      fullNameHash={projectName} // 将projectName重命名为fullNameHash以更清楚地表示其含义
     />
   );
 }

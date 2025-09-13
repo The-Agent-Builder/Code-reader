@@ -17,6 +17,7 @@ import { api } from "../services/api";
 interface CodeViewerProps {
   filePath: string;
   fileAnalysisId?: number;
+  taskId?: number | null;
   onBack: () => void;
 }
 
@@ -321,6 +322,7 @@ class AuthService:
 export default function CodeViewer({
   filePath,
   fileAnalysisId,
+  taskId,
   onBack,
 }: CodeViewerProps) {
   const [activeTab, setActiveTab] = useState("code");
@@ -328,14 +330,74 @@ export default function CodeViewer({
   const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
 
-  // 获取静态文件数据（用于源代码显示）
-  const fileData = mockFileData[filePath] || {
-    language: "Unknown",
-    lines: 0,
-    complexity: "Unknown",
-    code: "// 文件内容加载中...",
-    analysis: { summary: "暂无分析数据" },
+  // 新增：真实文件数据状态
+  const [fileDetailData, setFileDetailData] = useState<any>(null);
+  const [isLoadingFileDetail, setIsLoadingFileDetail] = useState(false);
+  const [fileDetailError, setFileDetailError] = useState<string | null>(null);
+
+  // 加载文件详情数据
+  const loadFileDetailData = async (fileId: number, taskId: number) => {
+    setIsLoadingFileDetail(true);
+    setFileDetailError(null);
+
+    try {
+      console.log(
+        "Loading file detail data for file_id:",
+        fileId,
+        "task_id:",
+        taskId
+      );
+      const response = await api.getFileAnalysisDetail(fileId, taskId);
+
+      if (response.status === "success" && response.file_analysis) {
+        setFileDetailData(response.file_analysis);
+        console.log("File detail data loaded:", response.file_analysis);
+      } else {
+        setFileDetailError("获取文件详情失败");
+        console.warn("API returned error:", response.message);
+      }
+    } catch (error) {
+      console.error("Error loading file detail data:", error);
+      setFileDetailError(
+        error instanceof Error ? error.message : "加载文件详情失败"
+      );
+    } finally {
+      setIsLoadingFileDetail(false);
+    }
   };
+
+  // 获取要显示的文件数据（优先使用真实数据，否则使用静态数据）
+  const getDisplayFileData = () => {
+    if (fileDetailData) {
+      return {
+        language: fileDetailData.language || "Unknown",
+        lines: fileDetailData.code_lines || 0,
+        code: fileDetailData.code_content || "// 文件内容为空",
+        filePath: fileDetailData.file_path || filePath,
+      };
+    }
+
+    // 后备：使用静态数据
+    const mockData = mockFileData[filePath];
+    if (mockData) {
+      return {
+        language: mockData.language,
+        lines: mockData.lines,
+        code: mockData.code,
+        filePath: filePath,
+      };
+    }
+
+    // 默认数据
+    return {
+      language: "Unknown",
+      lines: 0,
+      code: isLoadingFileDetail ? "// 文件内容加载中..." : "// 文件内容为空",
+      filePath: filePath,
+    };
+  };
+
+  const fileData = getDisplayFileData();
 
   // 加载AI分析数据
   const loadAnalysisData = async (fileAnalysisId: number) => {
@@ -398,6 +460,13 @@ export default function CodeViewer({
     }
   }, [fileAnalysisId]);
 
+  // 当fileAnalysisId和taskId都存在时加载文件详情
+  useEffect(() => {
+    if (fileAnalysisId && taskId) {
+      loadFileDetailData(fileAnalysisId, taskId);
+    }
+  }, [fileAnalysisId, taskId]);
+
   // 获取要显示的分析数据
   const displayAnalysis = analysisData || fileData.analysis;
 
@@ -428,20 +497,24 @@ export default function CodeViewer({
           <div className="flex items-center space-x-4">
             <Badge variant="secondary">{fileData.language}</Badge>
             <span className="text-sm text-gray-600">{fileData.lines} 行</span>
-            <span className="text-sm text-gray-600">
-              复杂度: {fileData.complexity}
-            </span>
+            {isLoadingFileDetail && (
+              <div className="flex items-center space-x-2">
+                <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                <span className="text-sm text-gray-500">加载中...</span>
+              </div>
+            )}
+            {fileDetailError && (
+              <span className="text-sm text-red-500">加载失败</span>
+            )}
           </div>
 
           <div className="flex items-center space-x-4 text-sm text-gray-500">
-            <div className="flex items-center">
-              <Users className="h-4 w-4 mr-1" />
-              {fileData.author}
-            </div>
-            <div className="flex items-center">
-              <Clock className="h-4 w-4 mr-1" />
-              {fileData.lastModified}
-            </div>
+            {fileDetailData?.analysis_timestamp && (
+              <div className="flex items-center">
+                <Clock className="h-4 w-4 mr-1" />
+                {new Date(fileDetailData.analysis_timestamp).toLocaleString()}
+              </div>
+            )}
           </div>
         </div>
       </div>

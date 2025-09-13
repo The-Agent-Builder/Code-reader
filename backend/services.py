@@ -4,7 +4,8 @@
 
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from models import FileAnalysis, AnalysisItem, Repository, AnalysisTask
+from models import FileAnalysis, AnalysisItem, Repository, AnalysisTask, TaskReadme
+from typing import Optional
 
 from database import SessionLocal
 import logging
@@ -923,6 +924,105 @@ class RepositoryService:
                 db.close()
 
     @staticmethod
+    def get_repository_by_name_or_full_name(
+        name: Optional[str] = None, full_name: Optional[str] = None, db: Session = None, include_tasks: bool = True
+    ) -> dict:
+        """
+        根据仓库名称或完整仓库名获取仓库信息
+
+        Args:
+            name: 仓库名称（精确匹配，可选）
+            full_name: 完整仓库名（精确匹配，可选）
+            db: 数据库会话（可选）
+            include_tasks: 是否包含分析任务信息
+
+        Returns:
+            dict: 包含仓库信息的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            # 验证参数
+            if not name and not full_name:
+                return {
+                    "status": "error",
+                    "message": "必须提供 name 或 full_name 参数",
+                    "repository": None,
+                }
+
+            # 构建查询条件
+            repository = None
+            search_field = ""
+            search_value = ""
+
+            if full_name:
+                # 优先使用 full_name 查询
+                repository = db.query(Repository).filter(Repository.full_name == full_name).first()
+                search_field = "full_name"
+                search_value = full_name
+            elif name:
+                # 使用 name 查询
+                repository = db.query(Repository).filter(Repository.name == name).first()
+                search_field = "name"
+                search_value = name
+
+            # 如果需要包含任务信息，手动查询任务
+            if include_tasks and repository:
+                tasks = (
+                    db.query(AnalysisTask)
+                    .filter(AnalysisTask.repository_id == repository.id)
+                    .order_by(AnalysisTask.start_time.asc())
+                    .all()
+                )
+                # 手动设置任务列表
+                repository.analysis_tasks = tasks
+
+            if not repository:
+                return {
+                    "status": "success",
+                    "message": f"未找到 {search_field} 为 '{search_value}' 的仓库记录",
+                    "search_field": search_field,
+                    "search_value": search_value,
+                    "repository": None,
+                }
+
+            logger.info(f"成功获取仓库信息，{search_field}: '{search_value}'")
+
+            return {
+                "status": "success",
+                "message": "仓库信息获取成功",
+                "search_field": search_field,
+                "search_value": search_value,
+                "repository": repository.to_dict(include_tasks=include_tasks),
+            }
+
+        except SQLAlchemyError as e:
+            logger.error(f"数据库查询失败: {str(e)}")
+            return {
+                "status": "error",
+                "message": "数据库查询失败",
+                "search_field": search_field if "search_field" in locals() else "unknown",
+                "search_value": search_value if "search_value" in locals() else "unknown",
+                "error": str(e),
+            }
+        except Exception as e:
+            logger.error(f"获取仓库信息时发生未知错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "获取仓库信息时发生未知错误",
+                "search_field": search_field if "search_field" in locals() else "unknown",
+                "search_value": search_value if "search_value" in locals() else "unknown",
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
+
+    @staticmethod
     def get_repository_by_id(repository_id: int, db: Session = None, include_tasks: bool = True) -> dict:
         """
         根据仓库ID获取仓库信息
@@ -1333,6 +1433,353 @@ class RepositoryService:
                 "status": "error",
                 "message": "删除仓库时发生未知错误",
                 "repository_id": repository_id,
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
+
+
+class TaskReadmeService:
+    """任务README服务类"""
+
+    @staticmethod
+    def create_task_readme(readme_data: dict, db: Session = None) -> dict:
+        """
+        创建任务README记录
+
+        Args:
+            readme_data: README数据字典
+            db: 数据库会话（可选）
+
+        Returns:
+            dict: 包含创建结果的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            # 验证task_id是否存在
+            task = db.query(AnalysisTask).filter(AnalysisTask.id == readme_data["task_id"]).first()
+            if not task:
+                return {
+                    "status": "error",
+                    "message": f"任务ID {readme_data['task_id']} 不存在",
+                    "task_id": readme_data["task_id"],
+                }
+
+            # 创建新的README记录
+            new_readme = TaskReadme(
+                task_id=readme_data["task_id"],
+                content=readme_data["content"],
+            )
+
+            db.add(new_readme)
+            db.commit()
+            db.refresh(new_readme)
+
+            logger.info(f"成功创建任务README记录，ID: {new_readme.id}")
+
+            return {
+                "status": "success",
+                "message": "任务README创建成功",
+                "readme": new_readme.to_dict(),
+            }
+
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error(f"数据库操作失败: {str(e)}")
+            return {
+                "status": "error",
+                "message": "数据库操作失败",
+                "error": str(e),
+            }
+        except Exception as e:
+            db.rollback()
+            logger.error(f"创建任务README记录时发生未知错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "创建任务README记录时发生未知错误",
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
+
+    @staticmethod
+    def get_task_readme_by_id(readme_id: int, db: Session = None) -> dict:
+        """
+        根据README ID获取README记录
+
+        Args:
+            readme_id: README ID
+            db: 数据库会话（可选）
+
+        Returns:
+            dict: 包含README信息的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            readme = db.query(TaskReadme).filter(TaskReadme.id == readme_id).first()
+
+            if not readme:
+                return {
+                    "status": "success",
+                    "message": f"未找到ID为 {readme_id} 的README记录",
+                    "readme_id": readme_id,
+                    "readme": None,
+                }
+
+            logger.info(f"成功获取README ID {readme_id} 的信息")
+
+            return {
+                "status": "success",
+                "message": "README信息获取成功",
+                "readme_id": readme_id,
+                "readme": readme.to_dict(),
+            }
+
+        except SQLAlchemyError as e:
+            logger.error(f"数据库操作失败: {str(e)}")
+            return {
+                "status": "error",
+                "message": "数据库操作失败",
+                "readme_id": readme_id,
+                "error": str(e),
+            }
+        except Exception as e:
+            logger.error(f"获取README记录时发生未知错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "获取README记录时发生未知错误",
+                "readme_id": readme_id,
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
+
+    @staticmethod
+    def get_task_readme_by_task_id(task_id: int, db: Session = None) -> dict:
+        """
+        根据任务ID获取README记录
+
+        Args:
+            task_id: 任务ID
+            db: 数据库会话（可选）
+
+        Returns:
+            dict: 包含README信息的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            # 验证任务是否存在
+            task = db.query(AnalysisTask).filter(AnalysisTask.id == task_id).first()
+            if not task:
+                return {
+                    "status": "error",
+                    "message": f"任务ID {task_id} 不存在",
+                    "task_id": task_id,
+                }
+
+            # 查询该任务的README记录（按创建时间倒序，获取最新的）
+            readme = (
+                db.query(TaskReadme)
+                .filter(TaskReadme.task_id == task_id)
+                .order_by(TaskReadme.created_at.desc())
+                .first()
+            )
+
+            if not readme:
+                return {
+                    "status": "success",
+                    "message": f"未找到任务ID为 {task_id} 的README记录",
+                    "task_id": task_id,
+                    "readme": None,
+                }
+
+            logger.info(f"成功获取任务ID {task_id} 的README信息")
+
+            return {
+                "status": "success",
+                "message": "README信息获取成功",
+                "task_id": task_id,
+                "readme": readme.to_dict(),
+            }
+
+        except SQLAlchemyError as e:
+            logger.error(f"数据库操作失败: {str(e)}")
+            return {
+                "status": "error",
+                "message": "数据库操作失败",
+                "task_id": task_id,
+                "error": str(e),
+            }
+        except Exception as e:
+            logger.error(f"获取README记录时发生未知错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "获取README记录时发生未知错误",
+                "task_id": task_id,
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
+
+    @staticmethod
+    def update_task_readme(readme_id: int, readme_data: dict, db: Session = None) -> dict:
+        """
+        更新任务README记录
+
+        Args:
+            readme_id: README ID
+            readme_data: 更新数据字典
+            db: 数据库会话（可选）
+
+        Returns:
+            dict: 包含更新结果的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            # 查询要更新的README记录
+            readme = db.query(TaskReadme).filter(TaskReadme.id == readme_id).first()
+
+            if not readme:
+                return {
+                    "status": "error",
+                    "message": f"未找到ID为 {readme_id} 的README记录",
+                    "readme_id": readme_id,
+                }
+
+            # 如果提供了task_id，验证任务是否存在
+            if "task_id" in readme_data:
+                task = db.query(AnalysisTask).filter(AnalysisTask.id == readme_data["task_id"]).first()
+                if not task:
+                    return {
+                        "status": "error",
+                        "message": f"任务ID {readme_data['task_id']} 不存在",
+                        "task_id": readme_data["task_id"],
+                    }
+
+            # 更新字段
+            for field, value in readme_data.items():
+                if hasattr(readme, field):
+                    setattr(readme, field, value)
+
+            db.commit()
+            db.refresh(readme)
+
+            logger.info(f"成功更新README记录ID {readme_id}")
+
+            return {
+                "status": "success",
+                "message": "README记录更新成功",
+                "readme_id": readme_id,
+                "readme": readme.to_dict(),
+            }
+
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error(f"数据库操作失败: {str(e)}")
+            return {
+                "status": "error",
+                "message": "数据库操作失败",
+                "readme_id": readme_id,
+                "error": str(e),
+            }
+        except Exception as e:
+            db.rollback()
+            logger.error(f"更新README记录时发生未知错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "更新README记录时发生未知错误",
+                "readme_id": readme_id,
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
+
+    @staticmethod
+    def delete_task_readme(readme_id: int, db: Session = None) -> dict:
+        """
+        删除任务README记录
+
+        Args:
+            readme_id: README ID
+            db: 数据库会话（可选）
+
+        Returns:
+            dict: 包含删除结果的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            # 查询要删除的README记录
+            readme = db.query(TaskReadme).filter(TaskReadme.id == readme_id).first()
+
+            if not readme:
+                return {
+                    "status": "error",
+                    "message": f"未找到ID为 {readme_id} 的README记录",
+                    "readme_id": readme_id,
+                }
+
+            # 保存README数据用于返回
+            readme_data = readme.to_dict()
+
+            # 物理删除记录
+            db.delete(readme)
+            db.commit()
+
+            logger.info(f"成功删除README记录ID {readme_id}")
+
+            return {
+                "status": "success",
+                "message": "README记录已删除",
+                "readme_id": readme_id,
+                "deleted_readme": readme_data,
+            }
+
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error(f"数据库操作失败: {str(e)}")
+            return {
+                "status": "error",
+                "message": "数据库操作失败",
+                "readme_id": readme_id,
+                "error": str(e),
+            }
+        except Exception as e:
+            db.rollback()
+            logger.error(f"删除README记录时发生未知错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "删除README记录时发生未知错误",
+                "readme_id": readme_id,
                 "error": str(e),
             }
         finally:
@@ -2053,14 +2500,13 @@ class UploadService:
             random_num = str(random.randint(100000, 999999))
             md5_hash.update(random_num.encode("utf-8"))
 
-            # 先读取所有文件内容来计算MD5
+            # 先读取所有文件内容来计算MD5，并缓存内容以避免重复读取
             file_contents = []
             for file in files:
                 content = await file.read()
                 file_contents.append((file.filename, content))
                 md5_hash.update(content)
-                # 重置文件指针，以便后续读取
-                await file.seek(0)
+                # 注意：不再尝试重置文件指针，而是使用缓存的内容
 
             # 生成MD5目录名
             md5_dir_name = md5_hash.hexdigest()
@@ -2095,13 +2541,14 @@ class UploadService:
                     logger.info(f"检测到根文件夹: {root_folder_name}")
 
             # 打印前几个文件的详细信息用于调试
-            for i, file in enumerate(files[:5]):
-                logger.info(f"文件 {i}: filename={file.filename}, content_type={file.content_type}")
+            for i, (filename, content) in enumerate(file_contents[:5]):
+                logger.info(f"文件 {i}: filename={filename}, content_size={len(content)} bytes")
 
-            for file in files:
+            # 使用缓存的文件内容进行处理，避免重复读取
+            for i, (filename, cached_content) in enumerate(file_contents):
                 try:
                     # 获取文件的相对路径（前端上传时会保持目录结构）
-                    file_path = file.filename
+                    file_path = filename
                     if not file_path:
                         logger.warning("跳过空文件名的文件")
                         continue
@@ -2127,8 +2574,8 @@ class UploadService:
                     # 确保父目录存在
                     full_file_path.parent.mkdir(parents=True, exist_ok=True)
 
-                    # 保存文件内容
-                    content = await file.read()
+                    # 使用缓存的文件内容，避免重复读取
+                    content = cached_content
                     file_size = len(content)
 
                     with open(full_file_path, "wb") as f:
@@ -2153,7 +2600,7 @@ class UploadService:
 
                     saved_files.append(
                         {
-                            "filename": file.filename,
+                            "filename": filename,
                             "size": file_size,
                             "path": str(full_file_path.relative_to(repo_path)),
                             "extension": file_extension,
@@ -2165,8 +2612,8 @@ class UploadService:
                     logger.debug(f"成功保存文件: {relative_file_path} ({file_size} bytes)")
 
                 except Exception as e:
-                    logger.error(f"保存文件失败 {file.filename}: {str(e)}")
-                    failed_files.append({"filename": file.filename, "error": str(e)})
+                    logger.error(f"保存文件失败 {filename}: {str(e)}")
+                    failed_files.append({"filename": filename, "error": str(e)})
 
             # 检查是否有文件成功保存
             if not saved_files:

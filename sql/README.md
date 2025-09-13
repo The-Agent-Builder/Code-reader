@@ -19,6 +19,7 @@
 - 创建 `analysis_tasks` 表
 - 创建 `file_analyses` 表
 - 创建 `analysis_items` 表
+- 创建 `task_readmes` 表
 - 设置索引和约束
 
 ## 🚀 使用方法
@@ -164,6 +165,28 @@ source /path/to/sql/2_create_tables.sql
 
 - `fk_item_file`: 当文件分析记录被删除时，相关分析项也会被级联删除
 
+### task_readmes（任务 README 表）
+
+存储根据任务生成的完整 README 内容
+
+| 字段名       | 数据类型 | 约束                        | 说明              |
+| ------------ | -------- | --------------------------- | ----------------- |
+| `id`         | INT      | PRIMARY KEY, AUTO_INCREMENT | readme 仓库 ID    |
+| `task_id`    | INT      | NOT NULL, FOREIGN KEY       | 关联的任务 ID     |
+| `content`    | LONGTEXT | NOT NULL                    | readme 的完整内容 |
+| `created_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP   | 创建时间          |
+| `updated_at` | DATETIME | AUTO UPDATE                 | 更新时间          |
+
+**索引：**
+
+- `idx_task_id`: 按任务查询 README
+- `idx_created_at`: 按创建时间排序
+- `idx_updated_at`: 按更新时间排序
+
+**外键约束：**
+
+- `fk_readme_task`: 当任务被删除时，相关 README 记录也会被级联删除
+
 ## ⚙️ 配置要求
 
 - MySQL 5.7+ （推荐 8.0+）
@@ -185,4 +208,5 @@ DESCRIBE repositories;
 DESCRIBE analysis_tasks;
 DESCRIBE file_analyses;
 DESCRIBE analysis_items;
+DESCRIBE task_readmes;
 ```

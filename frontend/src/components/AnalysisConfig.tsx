@@ -821,13 +821,15 @@ export default function AnalysisConfig({
           });
 
           if (taskResult.status === "success") {
-            // 将任务信息保存到 sessionStorage
+            // 将任务信息保存到 sessionStorage，包括MD5信息
             const taskInfo = {
               taskId: taskResult.task.id,
               repositoryId: uploadResult.repository_id,
               repositoryName: uploadResult.repository_name,
+              md5DirectoryName: uploadResult.md5_directory_name,
               fileList: selectedFilePaths,
             };
+            console.log("保存任务信息到sessionStorage:", taskInfo);
             sessionStorage.setItem("currentTaskInfo", JSON.stringify(taskInfo));
 
             // 延迟一下显示成功状态，然后调用原始的分析回调

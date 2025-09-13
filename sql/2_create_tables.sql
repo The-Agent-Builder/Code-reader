@@ -107,6 +107,22 @@ CREATE TABLE IF NOT EXISTS analysis_items (
     REFERENCES file_analyses(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='代码分析项表';
 
+-- 5. 创建 task_readmes 表
+CREATE TABLE IF NOT EXISTS task_readmes (
+  id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'readme仓库ID',
+  task_id INT NOT NULL COMMENT '任务ID',
+  content LONGTEXT NOT NULL COMMENT 'readme的完整内容',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+
+  INDEX idx_task_id (task_id),
+  INDEX idx_created_at (created_at),
+  INDEX idx_updated_at (updated_at),
+
+  CONSTRAINT fk_readme_task FOREIGN KEY (task_id)
+    REFERENCES analysis_tasks(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='任务生成的README表';
+
 -- 显示创建结果
 SELECT 'Tables created successfully' AS status;
 SHOW TABLES;
@@ -116,3 +132,4 @@ DESCRIBE repositories;
 DESCRIBE analysis_tasks;
 DESCRIBE file_analyses;
 DESCRIBE analysis_items;
+DESCRIBE task_readmes;
