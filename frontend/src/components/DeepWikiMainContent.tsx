@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { api } from "../services/api";
+import { findFileInTree, FileNode, normalizePath } from "../utils/fileTree";
 
 interface TaskStatistics {
   code_lines: number;
@@ -15,6 +16,8 @@ interface MainContentProps {
   activeSection: string;
   onSectionChange: (section: string) => void;
   onFileSelect: (file: string) => void;
+  onFileHighlight: (file: string) => void; // 新增：文件高亮回调
+  fileTree: FileNode | null; // 新增：文件树数据
   projectName?: string;
   taskStatistics?: TaskStatistics | null;
   taskId?: number | null;
@@ -33,6 +36,8 @@ export function MainContent({
   activeSection,
   onSectionChange,
   onFileSelect,
+  onFileHighlight,
+  fileTree,
   projectName,
   taskStatistics,
   taskId,
@@ -277,28 +282,41 @@ export function MainContent({
                   ),
                   // 自定义链接渲染，处理文件链接
                   a: ({ href, children, ...props }) => {
-                    if (href && href.endsWith(".py")) {
+                    // 如果没有href，渲染为普通文本
+                    if (!href) {
+                      return <span {...props}>{children}</span>;
+                    }
+
+                    // 标准化文件路径：URL解码 + 路径分隔符标准化
+                    const normalizedHref = normalizePath(href);
+
+                    // 检查文件是否存在于文件树中
+                    const fileExists = findFileInTree(fileTree, normalizedHref);
+
+                    if (fileExists) {
+                      // 文件存在，渲染为可点击的链接
                       return (
                         <button
-                          className="text-blue-600 hover:text-blue-800 underline font-medium"
-                          onClick={() => onFileSelect(href)}
+                          className="text-blue-600 hover:text-blue-800 underline font-medium transition-colors"
+                          onClick={() => onFileHighlight(normalizedHref)}
+                          title={`定位到文件: ${normalizedHref}`}
                           {...props}
                         >
                           {children}
                         </button>
                       );
+                    } else {
+                      // 文件不存在，渲染为普通文本（不同字体样式）
+                      return (
+                        <span
+                          className="text-gray-500 font-mono text-sm bg-gray-100 px-1 py-0.5 rounded"
+                          title={`文件不存在: ${normalizedHref}`}
+                          {...props}
+                        >
+                          {children}
+                        </span>
+                      );
                     }
-                    return (
-                      <a
-                        href={href}
-                        {...props}
-                        className="text-blue-600 hover:text-blue-800 underline"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        {children}
-                      </a>
-                    );
                   },
                   // 自定义代码块样式
                   code: ({ className, children, ...props }) => {

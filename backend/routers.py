@@ -19,6 +19,10 @@ from typing import Optional, List
 from pydantic import BaseModel, Field
 import logging
 import os
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
 
 # 设置logger
 logger = logging.getLogger(__name__)
@@ -149,9 +153,34 @@ class TaskReadmeUpdate(BaseModel):
     content: Optional[str] = Field(None, min_length=1, description="readme的完整内容")
 
 
+class PasswordVerifyRequest(BaseModel):
+    """密码验证请求模型"""
+
+    password: str = Field(..., min_length=1, description="密码")
+
+
 # 创建路由器
 repository_router = APIRouter(prefix="/api/repository", tags=["仓库管理"])
 analysis_router = APIRouter(prefix="/api/analysis", tags=["分析管理"])
+auth_router = APIRouter(prefix="/api/auth", tags=["认证管理"])
+
+
+@auth_router.post("/verify-password")
+async def verify_password(request: PasswordVerifyRequest):
+    """
+    验证密码
+    """
+    try:
+        # 从环境变量获取设置的密码
+        correct_password = os.getenv("PASSWORD", "123456")
+
+        if request.password == correct_password:
+            return JSONResponse(status_code=200, content={"success": True, "message": "密码验证成功"})
+        else:
+            return JSONResponse(status_code=200, content={"success": False, "message": "密码错误"})
+    except Exception as e:
+        logger.error(f"密码验证时发生错误: {str(e)}")
+        return JSONResponse(status_code=500, content={"success": False, "message": "服务器内部错误"})
 
 
 @repository_router.get("/repositories/{repository_id}")

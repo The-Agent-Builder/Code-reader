@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ChevronDown, ChevronRight, File, Folder } from "lucide-react";
 import { Button } from "./ui/button";
 
@@ -15,6 +15,8 @@ interface FileExplorerProps {
   fileTree?: FileNode | null;
   isLoading?: boolean;
   error?: string | null;
+  highlightedFile?: string | null; // 新增：需要高亮的文件路径
+  expandedPaths?: string[]; // 新增：需要展开的文件夹路径
 }
 
 const mockFileTree: FileNode = {
@@ -83,14 +85,37 @@ function FileTreeNode({
   level = 0,
   selectedFile,
   onFileSelect,
+  highlightedFile,
+  expandedPaths,
 }: {
   node: FileNode;
   level?: number;
   selectedFile: string | null;
   onFileSelect: (path: string) => void;
+  highlightedFile?: string | null;
+  expandedPaths?: string[];
 }) {
-  const [isExpanded, setIsExpanded] = useState(level < 2); // Auto-expand first 2 levels
+  // 判断是否应该展开：默认展开前2层，或者在expandedPaths中
+  const shouldExpand =
+    level < 2 || (expandedPaths && expandedPaths.includes(node.path));
+  const [isExpanded, setIsExpanded] = useState(shouldExpand);
+
+  // 当expandedPaths改变时，更新展开状态
+  useEffect(() => {
+    if (expandedPaths && expandedPaths.includes(node.path)) {
+      setIsExpanded(true);
+    }
+  }, [expandedPaths, node.path]);
+
   const isSelected = selectedFile === node.path;
+  const isHighlighted = highlightedFile === node.path;
+
+  // 调试：打印路径匹配信息
+  if (highlightedFile && node.type === "file") {
+    console.log(
+      `File node: "${node.name}" (path: "${node.path}"), highlighted: "${highlightedFile}", match: ${isHighlighted}`
+    );
+  }
 
   const handleClick = () => {
     if (node.type === "folder") {
@@ -105,10 +130,12 @@ function FileTreeNode({
       <Button
         variant="ghost"
         className={`
-          w-full justify-start px-2 py-1 h-auto text-sm
+          w-full justify-start px-2 py-1 h-auto text-sm transition-all duration-300
           ${
             isSelected
               ? "bg-blue-100 text-blue-700"
+              : isHighlighted
+              ? "bg-yellow-100 text-yellow-800 border-2 border-yellow-300"
               : "text-gray-700 hover:bg-gray-100"
           }
         `}
@@ -140,6 +167,8 @@ function FileTreeNode({
               level={level + 1}
               selectedFile={selectedFile}
               onFileSelect={onFileSelect}
+              highlightedFile={highlightedFile}
+              expandedPaths={expandedPaths}
             />
           ))}
         </div>
@@ -154,6 +183,8 @@ export function FileExplorer({
   fileTree,
   isLoading,
   error,
+  highlightedFile,
+  expandedPaths,
 }: FileExplorerProps) {
   // 如果正在加载
   if (isLoading) {
@@ -203,6 +234,8 @@ export function FileExplorer({
             node={child}
             selectedFile={selectedFile}
             onFileSelect={onFileSelect}
+            highlightedFile={highlightedFile}
+            expandedPaths={expandedPaths}
           />
         ))
       ) : (

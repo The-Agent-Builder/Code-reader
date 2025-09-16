@@ -237,6 +237,244 @@ export function sortFileTree(node: FileNode): void {
 }
 
 /**
+ * 标准化文件路径：URL解码 + 路径分隔符标准化
+ * @param path 原始文件路径
+ * @returns 标准化后的路径
+ */
+export function normalizePath(path: string): string {
+  if (!path) return "";
+
+  try {
+    // 先进行URL解码，处理 %5C 等编码字符
+    const decodedPath = decodeURIComponent(path);
+    // 统一使用正斜杠，移除开头的斜杠
+    return decodedPath.replace(/\\/g, "/").replace(/^\/+/, "");
+  } catch (error) {
+    // 如果URL解码失败，使用原始路径进行标准化
+    console.warn("Failed to decode URL:", path, error);
+    return path.replace(/\\/g, "/").replace(/^\/+/, "");
+  }
+}
+
+/**
+ * 在文件树中查找指定路径的文件是否存在
+ * @param fileTree 文件树根节点
+ * @param targetPath 目标文件路径（相对于项目根目录）
+ * @returns 是否找到该文件
+ */
+export function findFileInTree(
+  fileTree: FileNode | null,
+  targetPath: string
+): boolean {
+  if (!fileTree || !targetPath) return false;
+
+  // 标准化路径
+  const normalizedPath = normalizePath(targetPath);
+
+  // 判断是否只是文件名（不包含路径分隔符）
+  const isFileNameOnly = !normalizedPath.includes("/");
+
+  // 递归搜索函数
+  function searchNode(node: FileNode): boolean {
+    // 标准化当前节点路径
+    const nodePath = node.path.replace(/\\/g, "/").replace(/^\/+/, "");
+
+    if (node.type === "file") {
+      if (isFileNameOnly) {
+        // 如果只是文件名，检查文件名是否匹配
+        return node.name === normalizedPath;
+      } else {
+        // 如果是完整路径，检查完整路径是否匹配
+        return nodePath === normalizedPath;
+      }
+    }
+
+    // 如果是文件夹，递归搜索子节点
+    if (node.children) {
+      return node.children.some((child) => searchNode(child));
+    }
+
+    return false;
+  }
+
+  // 从根节点开始搜索
+  if (fileTree.children) {
+    return fileTree.children.some((child) => searchNode(child));
+  }
+
+  return false;
+}
+
+/**
+ * 获取到达指定文件路径需要展开的所有文件夹路径
+ * @param fileTree 文件树根节点
+ * @param targetPath 目标文件路径
+ * @returns 需要展开的文件夹路径数组
+ */
+export function getPathsToExpand(
+  fileTree: FileNode | null,
+  targetPath: string
+): string[] {
+  if (!fileTree || !targetPath) return [];
+
+  const normalizedPath = normalizePath(targetPath);
+  const pathsToExpand: string[] = [];
+
+  // 判断是否只是文件名（不包含路径分隔符）
+  const isFileNameOnly = !normalizedPath.includes("/");
+
+  function searchNode(node: FileNode, currentPath: string[] = []): boolean {
+    const nodePath = node.path.replace(/\\/g, "/").replace(/^\/+/, "");
+
+    // 如果找到目标文件
+    if (node.type === "file") {
+      let isMatch = false;
+      if (isFileNameOnly) {
+        // 如果只是文件名，检查文件名是否匹配
+        isMatch = node.name === normalizedPath;
+      } else {
+        // 如果是完整路径，检查完整路径是否匹配
+        isMatch = nodePath === normalizedPath;
+      }
+
+      if (isMatch) {
+        // 添加所有父文件夹路径到展开列表
+        pathsToExpand.push(...currentPath);
+        return true;
+      }
+    }
+
+    // 如果是文件夹，递归搜索
+    if (node.type === "folder" && node.children) {
+      const newPath = [...currentPath, node.path];
+      if (node.children.some((child) => searchNode(child, newPath))) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  if (fileTree.children) {
+    fileTree.children.some((child) => searchNode(child));
+  }
+
+  return pathsToExpand;
+}
+
+/**
+ * 调试工具：打印文件树结构
+ * @param fileTree 文件树根节点
+ * @param indent 缩进级别
+ */
+export function debugPrintFileTree(
+  fileTree: FileNode | null,
+  indent: number = 0
+): void {
+  if (!fileTree) {
+    console.log("File tree is null");
+    return;
+  }
+
+  const indentStr = "  ".repeat(indent);
+  const icon = fileTree.type === "folder" ? "📁" : "📄";
+  console.log(
+    `${indentStr}${icon} ${fileTree.name} (path: "${fileTree.path}")`
+  );
+
+  if (fileTree.children) {
+    fileTree.children.forEach((child) => {
+      debugPrintFileTree(child, indent + 1);
+    });
+  }
+}
+
+/**
+ * 调试工具：查找所有匹配指定文件名的文件
+ * @param fileTree 文件树根节点
+ * @param fileName 要查找的文件名
+ * @returns 匹配的文件节点数组
+ */
+export function findAllFilesByName(
+  fileTree: FileNode | null,
+  fileName: string
+): FileNode[] {
+  if (!fileTree || !fileName) return [];
+
+  const matches: FileNode[] = [];
+
+  function searchNode(node: FileNode): void {
+    if (node.type === "file" && node.name === fileName) {
+      matches.push(node);
+    }
+
+    if (node.children) {
+      node.children.forEach((child) => searchNode(child));
+    }
+  }
+
+  if (fileTree.children) {
+    fileTree.children.forEach((child) => searchNode(child));
+  }
+
+  return matches;
+}
+
+/**
+ * 根据文件名或路径查找文件的完整路径
+ * @param fileTree 文件树根节点
+ * @param targetPath 目标文件路径或文件名
+ * @returns 找到的文件的完整路径，如果没找到返回null
+ */
+export function findFileFullPath(
+  fileTree: FileNode | null,
+  targetPath: string
+): string | null {
+  if (!fileTree || !targetPath) return null;
+
+  const normalizedPath = normalizePath(targetPath);
+  const isFileNameOnly = !normalizedPath.includes("/");
+
+  function searchNode(node: FileNode): string | null {
+    const nodePath = node.path.replace(/\\/g, "/").replace(/^\/+/, "");
+
+    if (node.type === "file") {
+      if (isFileNameOnly) {
+        // 如果只是文件名，检查文件名是否匹配，返回完整路径
+        if (node.name === normalizedPath) {
+          return nodePath;
+        }
+      } else {
+        // 如果是完整路径，检查完整路径是否匹配
+        if (nodePath === normalizedPath) {
+          return nodePath;
+        }
+      }
+    }
+
+    // 递归搜索子节点
+    if (node.children) {
+      for (const child of node.children) {
+        const result = searchNode(child);
+        if (result) return result;
+      }
+    }
+
+    return null;
+  }
+
+  // 从根节点开始搜索
+  if (fileTree.children) {
+    for (const child of fileTree.children) {
+      const result = searchNode(child);
+      if (result) return result;
+    }
+  }
+
+  return null;
+}
+
+/**
  * 格式化文件大小
  * @param bytes 字节数
  * @returns 格式化后的文件大小字符串

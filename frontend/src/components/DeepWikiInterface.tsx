@@ -6,7 +6,17 @@ import { FileExplorer } from "./FileExplorer";
 import CodeViewer from "./CodeViewer";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { api } from "../services/api";
-import { buildFileTree, sortFileTree, FileNode } from "../utils/fileTree";
+import {
+  buildFileTree,
+  sortFileTree,
+  FileNode,
+  findFileInTree,
+  getPathsToExpand,
+  normalizePath,
+  debugPrintFileTree,
+  findAllFilesByName,
+  findFileFullPath,
+} from "../utils/fileTree";
 import { useProject } from "../contexts/ProjectContext";
 
 interface DeepWikiInterfaceProps {
@@ -29,6 +39,10 @@ export default function DeepWikiInterface({
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [isFileExplorerVisible, setIsFileExplorerVisible] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>("documentation");
+
+  // 新增：文件高亮相关状态
+  const [highlightedFile, setHighlightedFile] = useState<string | null>(null);
+  const [expandedPaths, setExpandedPaths] = useState<string[]>([]);
 
   // 新增状态
   const [fileTree, setFileTree] = useState<FileNode | null>(null);
@@ -70,6 +84,71 @@ export default function DeepWikiInterface({
       console.warn("No file analysis ID found for file:", filePath);
       console.warn("File data map contents:", fileDataMap);
     }
+  };
+
+  // 新增：处理文件高亮定位
+  const handleFileHighlight = (filePath: string) => {
+    console.log("File highlight requested:", filePath);
+
+    // 标准化文件路径：URL解码 + 路径分隔符标准化
+    const normalizedPath = normalizePath(filePath);
+    console.log("Normalized path:", normalizedPath);
+
+    // 调试：打印文件树结构
+    console.log("=== File Tree Structure ===");
+    debugPrintFileTree(fileTree);
+
+    // 调试：查找所有匹配的文件
+    const isFileNameOnly = !normalizedPath.includes("/");
+    if (isFileNameOnly) {
+      console.log(`=== Searching for file name: "${normalizedPath}" ===`);
+      const matches = findAllFilesByName(fileTree, normalizedPath);
+      console.log("Found matches:", matches);
+    }
+
+    // 检查文件是否存在于文件树中
+    const fileExists = findFileInTree(fileTree, normalizedPath);
+    console.log("File exists:", fileExists);
+
+    if (!fileExists) {
+      console.warn("File not found in tree:", normalizedPath);
+      return;
+    }
+
+    // 获取文件的完整路径（对于只有文件名的情况很重要）
+    const fullPath = findFileFullPath(fileTree, normalizedPath);
+    console.log("Full path found:", fullPath);
+
+    if (!fullPath) {
+      console.warn("Could not determine full path for:", normalizedPath);
+      return;
+    }
+
+    // 确保文件浏览器可见
+    setIsFileExplorerVisible(true);
+
+    // 设置高亮文件（使用完整路径）
+    setHighlightedFile(fullPath);
+
+    // 获取需要展开的路径（使用完整路径）
+    const pathsToExpand = getPathsToExpand(fileTree, fullPath);
+    setExpandedPaths(pathsToExpand);
+
+    console.log(
+      "File highlighted:",
+      fullPath,
+      "Original path:",
+      filePath,
+      "Normalized path:",
+      normalizedPath,
+      "Paths to expand:",
+      pathsToExpand
+    );
+
+    // 保持高亮状态，不自动清除
+    // setTimeout(() => {
+    //   setHighlightedFile(null);
+    // }, 3000);
   };
 
   const handleBackToDocumentation = () => {
@@ -226,6 +305,8 @@ export default function DeepWikiInterface({
               activeSection={activeSection}
               onSectionChange={setActiveSection}
               onFileSelect={handleFileSelect}
+              onFileHighlight={handleFileHighlight}
+              fileTree={fileTree}
               projectName={repositoryInfo?.name || fullNameHash}
               taskStatistics={taskStatistics}
               taskId={currentTaskId}
@@ -279,6 +360,8 @@ export default function DeepWikiInterface({
               fileTree={fileTree}
               isLoading={isLoading}
               error={error}
+              highlightedFile={highlightedFile}
+              expandedPaths={expandedPaths}
             />
           </div>
         </aside>

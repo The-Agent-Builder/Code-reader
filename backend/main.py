@@ -10,7 +10,7 @@ import uvicorn
 import os
 from dotenv import load_dotenv
 from database import test_database_connection, get_database_info
-from routers import repository_router, analysis_router
+from routers import repository_router, analysis_router, auth_router
 from config import settings
 from pathlib import Path
 
@@ -57,6 +57,7 @@ app.add_middleware(
 # 包含路由
 app.include_router(repository_router)
 app.include_router(analysis_router)
+app.include_router(auth_router)
 
 
 @app.get("/health", tags=["系统监控"])
