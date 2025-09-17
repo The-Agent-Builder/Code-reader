@@ -1,5 +1,6 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import Layout from "../components/Layout";
+import HomePage from "../pages/HomePage";
 import UploadPage from "../pages/UploadPage";
 import ConfigPage from "../pages/ConfigPage";
 import AnalysisPage from "../pages/AnalysisPage";
@@ -16,7 +17,11 @@ export const router = createBrowserRouter([
         children: [
             {
                 index: true,
-                element: <Navigate to="/upload" replace />,
+                element: <Navigate to="/home" replace />,
+            },
+            {
+                path: "home",
+                element: <HomePage />,
             },
             {
                 path: "upload",
