@@ -102,6 +102,57 @@ export interface SystemStatisticsResponse {
     message?: string;
 }
 
+// 项目列表相关类型定义
+export interface RepositoryListItem {
+    id: number;
+    user_id: number;
+    name: string;
+    full_name: string;
+    local_path: string;
+    status: number;
+    created_at: string;
+    updated_at: string;
+    tasks?: Array<{
+        id: number;
+        repository_id: number;
+        status: string;
+        start_time: string;
+        end_time: string | null;
+        total_files: number;
+        successful_files: number;
+        failed_files: number;
+        analysis_config: any;
+    }>;
+    total_tasks?: number;
+}
+
+export interface PaginationInfo {
+    current_page: number;
+    page_size: number;
+    total_count: number;
+    total_pages: number;
+    has_next: boolean;
+    has_prev: boolean;
+}
+
+export interface RepositoryListResponse {
+    status: "success" | "error";
+    message: string;
+    data: {
+        repositories: RepositoryListItem[];
+        pagination: PaginationInfo;
+        filters: {
+            user_id?: number;
+            status?: number;
+        };
+        sorting: {
+            order_by: string;
+            order_direction: string;
+        };
+    };
+    error?: string;
+}
+
 // API服务类
 export class ApiService {
     private baseUrl: string;
@@ -353,6 +404,42 @@ export class ApiService {
     // 获取系统统计
     async getSystemStatistics(): Promise<SystemStatisticsResponse> {
         return this.request("/api/statistics");
+    }
+
+    // 获取项目列表（新增）
+    async getRepositoriesList(params?: {
+        user_id?: number;
+        status?: number;
+        order_by?: string;
+        order_direction?: string;
+        page?: number;
+        page_size?: number;
+    }): Promise<RepositoryListResponse> {
+        const searchParams = new URLSearchParams();
+
+        if (params?.user_id !== undefined) {
+            searchParams.append("user_id", params.user_id.toString());
+        }
+        if (params?.status !== undefined) {
+            searchParams.append("status", params.status.toString());
+        }
+        if (params?.order_by) {
+            searchParams.append("order_by", params.order_by);
+        }
+        if (params?.order_direction) {
+            searchParams.append("order_direction", params.order_direction);
+        }
+        if (params?.page !== undefined) {
+            searchParams.append("page", params.page.toString());
+        }
+        if (params?.page_size !== undefined) {
+            searchParams.append("page_size", params.page_size.toString());
+        }
+
+        const url = `/api/repository/repositories-list${
+            searchParams.toString() ? `?${searchParams.toString()}` : ""
+        }`;
+        return this.request(url);
     }
 
     // 根据仓库名称获取仓库信息（新增）
@@ -1537,6 +1624,9 @@ export const api = {
     verifyPassword: (password: string) => apiService.verifyPassword(password),
 
     // 新增的仓库和文件相关API
+    getRepositoriesList: (
+        params?: Parameters<ApiService["getRepositoriesList"]>[0]
+    ) => apiService.getRepositoriesList(params),
     getRepositoryByName: (
         name: string,
         exactMatch?: boolean,

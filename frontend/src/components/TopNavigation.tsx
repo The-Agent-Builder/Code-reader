@@ -43,6 +43,7 @@ interface ProjectVersion {
 
 interface TopNavigationProps {
     currentPage:
+        | "home"
         | "upload"
         | "config"
         | "analyzing"
@@ -52,6 +53,7 @@ interface TopNavigationProps {
         | "chat";
     onNavigate: (
         page:
+            | "home"
             | "upload"
             | "analyzing"
             | "deepwiki"
@@ -84,8 +86,10 @@ export default function TopNavigation({
     };
     const getPageTitle = () => {
         switch (currentPage) {
-            case "upload":
+            case "home":
                 return "AI 代码库领航员";
+            case "upload":
+                return "上传项目";
             case "config":
                 return "分析配置";
             case "analyzing":
@@ -108,7 +112,7 @@ export default function TopNavigation({
     };
 
     const canNavigateToHome = () => {
-        return currentPage !== "upload";
+        return currentPage !== "home"; // 除了主页，所有页面都可以返回主页
     };
 
     const getCurrentVersion = () => {
@@ -200,7 +204,7 @@ export default function TopNavigation({
                                     <Button
                                         variant="ghost"
                                         size="sm"
-                                        onClick={() => onNavigate("upload")}
+                                        onClick={() => onNavigate("home")}
                                     >
                                         <Home className="h-4 w-4" />
                                     </Button>

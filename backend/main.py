@@ -101,6 +101,7 @@ async def root():
                 "update": "/api/repository/repositories/{repository_id}",
                 "delete": "/api/repository/repositories/{repository_id}",
                 "get_by_name": "/api/repository/repositories?name={name}",
+                "get_list": "/api/repository/repositories-list",
             },
             "analysis": {
                 "get_tasks": "/api/repository/analysis-tasks/{repository_id}",

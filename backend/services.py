@@ -1287,6 +1287,142 @@ class RepositoryService:
                 db.close()
 
     @staticmethod
+    def get_repositories_list(
+        user_id: int = None,
+        status: int = None,
+        order_by: str = "created_at",
+        order_direction: str = "desc",
+        page: int = 1,
+        page_size: int = 10,
+        db: Session = None,
+    ) -> dict:
+        """
+        获取仓库列表，支持筛选、排序和分页
+
+        Args:
+            user_id: 用户ID筛选（可选）
+            status: 状态筛选（可选）
+            order_by: 排序字段，默认为created_at
+            order_direction: 排序方向，asc或desc，默认为desc
+            page: 页码，从1开始，默认为1
+            page_size: 每页数量，默认为10
+            db: 数据库会话（可选）
+
+        Returns:
+            dict: 包含仓库列表和分页信息的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            # 验证排序字段
+            valid_order_fields = ["id", "user_id", "name", "full_name", "status", "created_at", "updated_at"]
+            if order_by not in valid_order_fields:
+                return {
+                    "status": "error",
+                    "message": f"无效的排序字段: {order_by}，支持的字段: {', '.join(valid_order_fields)}",
+                }
+
+            # 验证排序方向
+            if order_direction.lower() not in ["asc", "desc"]:
+                return {
+                    "status": "error",
+                    "message": "排序方向必须是 'asc' 或 'desc'",
+                }
+
+            # 验证分页参数
+            if page < 1:
+                return {
+                    "status": "error",
+                    "message": "页码必须大于0",
+                }
+
+            if page_size < 1 or page_size > 100:
+                return {
+                    "status": "error",
+                    "message": "每页数量必须在1-100之间",
+                }
+
+            # 构建基础查询
+            query = db.query(Repository)
+
+            # 添加筛选条件
+            if user_id is not None:
+                query = query.filter(Repository.user_id == user_id)
+
+            if status is not None:
+                query = query.filter(Repository.status == status)
+
+            # 获取总数
+            total_count = query.count()
+
+            # 添加排序
+            order_field = getattr(Repository, order_by)
+            if order_direction.lower() == "asc":
+                query = query.order_by(order_field.asc())
+            else:
+                query = query.order_by(order_field.desc())
+
+            # 添加分页
+            offset = (page - 1) * page_size
+            repositories = query.offset(offset).limit(page_size).all()
+
+            # 计算分页信息
+            total_pages = (total_count + page_size - 1) // page_size
+            has_next = page < total_pages
+            has_prev = page > 1
+
+            # 转换为字典格式
+            repositories_data = [repo.to_dict(include_tasks=False) for repo in repositories]
+
+            logger.info(f"成功获取仓库列表，总数: {total_count}，当前页: {page}/{total_pages}")
+
+            return {
+                "status": "success",
+                "message": "仓库列表获取成功",
+                "data": {
+                    "repositories": repositories_data,
+                    "pagination": {
+                        "current_page": page,
+                        "page_size": page_size,
+                        "total_count": total_count,
+                        "total_pages": total_pages,
+                        "has_next": has_next,
+                        "has_prev": has_prev,
+                    },
+                    "filters": {
+                        "user_id": user_id,
+                        "status": status,
+                    },
+                    "sorting": {
+                        "order_by": order_by,
+                        "order_direction": order_direction,
+                    },
+                },
+            }
+
+        except SQLAlchemyError as e:
+            logger.error(f"数据库查询失败: {str(e)}")
+            return {
+                "status": "error",
+                "message": "数据库查询失败",
+                "error": str(e),
+            }
+        except Exception as e:
+            logger.error(f"获取仓库列表时发生未知错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "获取仓库列表时发生未知错误",
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
+
+    @staticmethod
     def get_repository_by_id(repository_id: int, db: Session = None, include_tasks: bool = True) -> dict:
         """
         根据仓库ID获取仓库信息

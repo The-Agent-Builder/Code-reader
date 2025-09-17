@@ -360,6 +360,61 @@ async def create_repository(
         )
 
 
+@repository_router.get("/repositories-list")
+async def get_repositories_list(
+    user_id: Optional[int] = Query(None, description="按用户ID筛选"),
+    status: Optional[int] = Query(None, description="按状态筛选: 1=存在，0=已删除"),
+    order_by: str = Query(
+        "created_at", description="排序字段: id, user_id, name, full_name, status, created_at, updated_at"
+    ),
+    order_direction: str = Query("desc", description="排序方向: asc, desc"),
+    page: int = Query(1, ge=1, description="页码，从1开始"),
+    page_size: int = Query(10, ge=1, le=100, description="每页数量，1-100"),
+    db: Session = Depends(get_db),
+):
+    """
+    获取仓库列表，支持筛选、排序和分页
+
+    Args:
+        user_id: 用户ID筛选（可选）
+        status: 状态筛选（可选）
+        order_by: 排序字段
+        order_direction: 排序方向
+        page: 页码
+        page_size: 每页数量
+        db: 数据库会话
+
+    Returns:
+        JSON响应包含仓库列表和分页信息
+    """
+    try:
+        # 调用服务层方法
+        result = RepositoryService.get_repositories_list(
+            user_id=user_id,
+            status=status,
+            order_by=order_by,
+            order_direction=order_direction,
+            page=page,
+            page_size=page_size,
+            db=db,
+        )
+
+        if result["status"] == "error":
+            return JSONResponse(status_code=400, content=result)
+
+        return JSONResponse(status_code=200, content=result)
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": "获取仓库列表时发生未知错误",
+                "error": str(e),
+            },
+        )
+
+
 @repository_router.get("/analysis-tasks/{repository_id}")
 async def get_analysis_tasks_by_repository(
     repository_id: int,
