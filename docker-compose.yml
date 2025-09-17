@@ -1,0 +1,83 @@
+
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+      - "8000:8000"
+    environment:
+      # 应用配置
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8000
+      
+      # 数据库配置 (请根据实际情况修改)
+      - DB_DIALECT=mysql+pymysql
+      - DB_HOST=host.docker.internal
+      - DB_PORT=3306
+      - DB_NAME=code_analysis
+      - DB_USER=root
+      - DB_PASSWORD=123456
+      - DB_PARAMS=charset=utf8mb4
+      - DB_ECHO=0
+      - DB_POOL_SIZE=5
+      - DB_MAX_OVERFLOW=10
+      
+      # API 配置 (请根据实际情况修改)
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-3.5-turbo}
+      
+      # LLM 配置
+      - LLM_MAX_CONCURRENT=25
+      - LLM_BATCH_SIZE=50
+      - LLM_REQUEST_TIMEOUT=120
+      - LLM_RETRY_DELAY=2
+      
+      # RAG 配置
+      - RAG_BASE_URL=${RAG_BASE_URL:-}
+      - RAG_BATCH_SIZE=100
+      
+      # README API 配置
+      - README_API_BASE_URL=http://127.0.0.1:8001
+      
+      # 存储路径
+      - LOCAL_REPO_PATH=/app/data/repos
+      - RESULTS_PATH=/app/data/results
+      - VECTORSTORE_PATH=/app/data/vectorstores
+      
+      # 前端配置
+      - VITE_PORT=3000
+    volumes:
+      # 持久化数据目录
+      - ./data:/app/data
+      # 可选: 挂载配置文件
+      - ./.env:/app/.env:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 可选: 如果需要本地数据库
+  # mysql:
+  #   image: mysql:8.0
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: 123456
+  #     MYSQL_DATABASE: code_analysis
+  #     MYSQL_CHARACTER_SET_SERVER: utf8mb4
+  #     MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
+  #   ports:
+  #     - "3306:3306"
+  #   volumes:
+  #     - mysql_data:/var/lib/mysql
+  #     - ./sql:/docker-entrypoint-initdb.d
+  #   restart: unless-stopped
+
+# volumes:
+#   mysql_data:
