@@ -46,9 +46,18 @@ app = FastAPI(
 )
 
 # 配置CORS中间件
+# 在 Docker 容器中，前端通过 Nginx 反向代理访问后端，不需要跨域
+# 但为了开发环境兼容，仍保留 CORS 配置
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000", "http://127.0.0.1:3001"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+        "http://localhost",
+        "http://127.0.0.1"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

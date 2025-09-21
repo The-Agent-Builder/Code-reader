@@ -83,17 +83,23 @@ COPY --from=frontend-builder /app/frontend/build /var/www/html
 
 # 配置 Nginx
 COPY docker/nginx.conf /etc/nginx/sites-available/default
+RUN rm -f /etc/nginx/sites-enabled/default && \
+    ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/
 
 # 配置 Supervisor
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# 创建必要的目录
-RUN mkdir -p /app/data/repos /app/data/results /app/data/vectorstores
+# 创建必要的目录和日志目录
+RUN mkdir -p /app/data/repos /app/data/results /app/data/vectorstores \
+    /var/log/supervisor /var/log/nginx
 
 # 设置环境变量
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH="/app"
 
-# 暴露端口
-EXPOSE 80 8000
+# 暴露端口（只暴露前端端口80，后端8000端口仅内部使用）
+EXPOSE 80
+
+# 启动 Supervisor
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
 

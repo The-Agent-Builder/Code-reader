@@ -23,12 +23,37 @@
 
 ## ⚡ 快速开始
 
-### 一键启动（推荐）
+### Docker 部署（推荐）
+
+使用 Docker 可以一键部署前后端服务，无需配置复杂的环境：
 
 ```bash
 # 1. 克隆项目
 git clone <your-repo-url>
-cd GitHub_analysis
+cd Code-reader
+
+# 2. 配置环境变量
+cp .env.example .env
+# 编辑 .env 文件，配置必要的 API 密钥
+
+# 3. 构建并启动服务
+chmod +x docker/build.sh docker/run.sh
+./docker/build.sh
+./docker/run.sh
+
+# 4. 访问服务
+# 前端: http://localhost
+# API文档: http://localhost/docs
+```
+
+### 本地开发部署
+
+如果需要本地开发，可以分别启动前后端：
+
+```bash
+# 1. 克隆项目
+git clone <your-repo-url>
+cd Code-reader
 
 # 2. 安装后端依赖
 cd backend
