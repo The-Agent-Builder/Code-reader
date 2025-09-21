@@ -1951,5 +1951,97 @@ async def delete_task_readme(
         )
 
 
+@repository_router.post("/upload/compress-and-upload/{md5_folder_name}")
+async def compress_and_upload_folder(
+    md5_folder_name: str,
+    db: Session = Depends(get_db),
+):
+    """
+    将指定md5文件夹压缩成zip文件并上传到README API服务
+
+    Args:
+        md5_folder_name: md5文件夹名称
+        db: 数据库会话
+
+    Returns:
+        JSON响应包含压缩和上传结果
+    """
+    try:
+        from config import Settings
+        import tempfile
+
+        # 构建文件夹路径
+        folder_path = os.path.join(Settings.LOCAL_REPO_PATH, md5_folder_name)
+
+        if not os.path.exists(folder_path):
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "status": "error",
+                    "message": f"文件夹不存在: {folder_path}"
+                }
+            )
+
+        # 创建临时zip文件
+        with tempfile.NamedTemporaryFile(suffix=f"_{md5_folder_name}.zip", delete=False) as temp_file:
+            zip_path = temp_file.name
+
+        # 压缩文件夹
+        compress_success = UploadService.create_zip_from_folder(folder_path, zip_path)
+
+        if not compress_success:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": "压缩文件夹失败"
+                }
+            )
+
+        # 上传到README API
+        upload_result = await UploadService.upload_zip_to_readme_api(
+            zip_path,
+            Settings.README_API_BASE_URL
+        )
+
+        # 清理临时文件
+        try:
+            os.unlink(zip_path)
+        except Exception as e:
+            logger.warning(f"清理临时文件失败: {e}")
+
+        if upload_result["success"]:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "success",
+                    "message": "压缩和上传成功",
+                    "md5_folder_name": md5_folder_name,
+                    "upload_result": upload_result["data"]
+                }
+            )
+        else:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": f"上传失败: {upload_result['message']}",
+                    "md5_folder_name": md5_folder_name
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"压缩和上传过程中发生错误: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": "压缩和上传过程中发生未知错误",
+                "md5_folder_name": md5_folder_name,
+                "error": str(e)
+            }
+        )
+
+
 # 导出路由器
 __all__ = ["repository_router", "analysis_router"]
