@@ -812,6 +812,20 @@ export default function AnalysisConfig({
       if (uploadResult.status === "success") {
         setUploadState((prev) => ({ ...prev, progress: 100, success: true }));
 
+        // 检查自动压缩上传结果
+        if (uploadResult.auto_compress_upload) {
+          const autoUploadResult = uploadResult.auto_compress_upload;
+          console.log("自动压缩上传结果:", autoUploadResult);
+
+          if (autoUploadResult.status === "success") {
+            console.log("✅ 文件已自动压缩并上传到README API服务");
+            // 可以在这里添加成功提示的UI
+          } else {
+            console.warn("⚠️ 自动压缩上传失败:", autoUploadResult.message);
+            // 可以在这里添加警告提示的UI，但不影响主流程
+          }
+        }
+
         // 前端主动创建分析任务
         try {
           const taskResult = await api.createAnalysisTask({
@@ -828,6 +842,7 @@ export default function AnalysisConfig({
               repositoryName: uploadResult.repository_name,
               md5DirectoryName: uploadResult.md5_directory_name,
               fileList: selectedFilePaths,
+              autoCompressUpload: uploadResult.auto_compress_upload, // 保存自动压缩上传结果
             };
             console.log("保存任务信息到sessionStorage:", taskInfo);
             sessionStorage.setItem("currentTaskInfo", JSON.stringify(taskInfo));

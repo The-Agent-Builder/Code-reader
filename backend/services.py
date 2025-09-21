@@ -10,6 +10,8 @@ from typing import Optional
 from database import SessionLocal
 import logging
 from datetime import datetime, timezone
+import zipfile
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -2798,6 +2800,62 @@ class UploadService:
                 f"成功上传仓库 '{clean_repo_name}'，共保存 {len(saved_files)} 个文件，总大小 {total_size} bytes"
             )
 
+            # 自动压缩并上传到README API
+            compress_upload_result = None
+            try:
+                logger.info(f"开始自动压缩并上传md5文件夹: {md5_dir_name}")
+
+                # 创建临时zip文件
+                import tempfile
+                import os
+                temp_dir = tempfile.gettempdir()
+                zip_path = os.path.join(temp_dir, f"{md5_dir_name}.zip")
+                
+
+                # 压缩文件夹
+                compress_success = UploadService.create_zip_from_folder(str(repo_path), zip_path)
+
+                if compress_success:
+                    # 上传到README API
+                    upload_result = await UploadService.upload_zip_to_readme_api(
+                        zip_path,
+                        settings.README_API_BASE_URL
+                    )
+
+                    if upload_result["success"]:
+                        logger.info(f"✅ 自动上传到README API成功: {upload_result}")
+                        compress_upload_result = {
+                            "status": "success",
+                            "message": "自动压缩并上传成功",
+                            "upload_data": upload_result["data"]
+                        }
+                    else:
+                        logger.warning(f"⚠️ 自动上传到README API失败: {upload_result['message']}")
+                        compress_upload_result = {
+                            "status": "error",
+                            "message": f"自动上传失败: {upload_result['message']}"
+                        }
+                else:
+                    logger.warning("⚠️ 自动压缩失败")
+                    compress_upload_result = {
+                        "status": "error",
+                        "message": "自动压缩失败"
+                    }
+
+                # 清理临时文件
+                try:
+                    import os
+                    os.unlink(zip_path)
+                except Exception as cleanup_error:
+                    logger.warning(f"清理临时文件失败: {cleanup_error}")
+
+            except Exception as auto_upload_error:
+                logger.error(f"自动压缩上传过程中发生错误: {auto_upload_error}")
+                compress_upload_result = {
+                    "status": "error",
+                    "message": f"自动压缩上传失败: {str(auto_upload_error)}"
+                }
+
             return {
                 "status": "success",
                 "message": "仓库文件夹上传成功",
@@ -2816,6 +2874,7 @@ class UploadService:
                 "file_analysis": folder_stats,
                 "sample_files": saved_files[:10],  # 前10个文件的详情
                 "errors": failed_files if failed_files else None,
+                "auto_compress_upload": compress_upload_result,  # 添加自动压缩上传结果
             }
 
         except Exception as e:
@@ -2952,3 +3011,88 @@ class UploadService:
         p = math.pow(1024, i)
         s = round(size_bytes / p, 2)
         return f"{s} {size_names[i]}"
+
+    @staticmethod
+    def create_zip_from_folder(folder_path: str, zip_path: str) -> bool:
+        """
+        将文件夹压缩成zip文件
+
+        Args:
+            folder_path: 要压缩的文件夹路径
+            zip_path: 输出的zip文件路径
+
+        Returns:
+            bool: 是否成功创建zip文件
+        """
+        try:
+            import os
+
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for root, dirs, files in os.walk(folder_path):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        # 计算相对路径，避免包含完整的绝对路径
+                        arcname = os.path.relpath(file_path, folder_path)
+                        zipf.write(file_path, arcname)
+
+            logger.info(f"✅ 成功创建zip文件: {zip_path}")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ 创建zip文件失败: {e}")
+            return False
+
+    @staticmethod
+    async def upload_zip_to_readme_api(zip_path: str, readme_api_base_url: str) -> dict:
+        """
+        将zip文件上传到README API服务
+
+        Args:
+            zip_path: zip文件路径
+            readme_api_base_url: README API的基础URL
+
+        Returns:
+            dict: 上传结果
+        """
+        try:
+            import os
+
+            if not os.path.exists(zip_path):
+                return {
+                    "success": False,
+                    "message": f"Zip文件不存在: {zip_path}"
+                }
+
+            upload_url = f"{readme_api_base_url}/api/upload/zip"
+
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                with open(zip_path, 'rb') as f:
+                    files = {
+                        'file': (os.path.basename(zip_path), f, 'application/zip')
+                    }
+
+                    logger.info(f"🚀 开始上传zip文件到: {upload_url}")
+                    response = await client.post(upload_url, files=files)
+
+                    if response.status_code == 200:
+                        result = response.json()
+                        logger.info(f"✅ zip文件上传成功: {result}")
+                        return {
+                            "success": True,
+                            "message": "上传成功",
+                            "data": result
+                        }
+                    else:
+                        error_msg = f"HTTP {response.status_code}: {response.text}"
+                        logger.error(f"❌ zip文件上传失败: {error_msg}")
+                        return {
+                            "success": False,
+                            "message": error_msg
+                        }
+
+        except Exception as e:
+            logger.error(f"❌ 上传zip文件时出错: {e}")
+            return {
+                "success": False,
+                "message": f"上传失败: {str(e)}"
+            }
