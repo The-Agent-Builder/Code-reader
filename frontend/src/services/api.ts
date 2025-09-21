@@ -1229,7 +1229,7 @@ export class ApiService {
                     headers: {
                         "Content-Type": "application/json",
                     },
-                    timeout: 30000, // 30秒超时
+                    timeout: 300000, // 30秒超时
                 }
             );
 
@@ -1345,7 +1345,7 @@ export class ApiService {
                     headers: {
                         "Content-Type": "application/json",
                     },
-                    timeout: 30000, // 30秒超时
+                    timeout: 300000, // 30秒超时
                 }
             );
 
@@ -1382,7 +1382,7 @@ export class ApiService {
                 import.meta.env.VITE_README_API_BASE_URL || "/deepwiki";
 
             // 修改localPath为 env中deepwiki_uoload_filepath/$localPath最后一级目录名$
-            const deepwikiUploadFilepath = import.meta.env.VITE_DEEPWIKI_UPLOAD_FILEPATH || "/tmp/uploads";
+            const deepwikiUploadFilepath = import.meta.env.VITE_DEEPWIKI_UPLOAD_FILEPATH || "/app/data/uploads";
             const lastDirName = localPath.split('/').filter(Boolean).pop() || "";
             const modifiedLocalPath = deepwikiUploadFilepath ? `${deepwikiUploadFilepath}/${lastDirName}` : localPath;
             console.log(

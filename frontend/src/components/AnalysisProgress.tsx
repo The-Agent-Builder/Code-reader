@@ -784,7 +784,7 @@ log_file = "app.log"
             return false;
           }
 
-        case 2: // 分析数据模型
+        case 3: // 分析数据模型
           console.log("开始分析数据模型...");
           if (!taskId) {
             console.error("任务ID不存在，无法执行分析数据模型");
@@ -826,7 +826,7 @@ log_file = "app.log"
             return false;
           }
 
-        case 3: // 生成文档结构
+        case 2: // 生成文档结构
           console.log("开始生成文档结构...");
           if (!taskId) {
             console.error("任务ID不存在，无法生成文档结构");
