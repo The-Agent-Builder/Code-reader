@@ -204,14 +204,14 @@ class RAGVectorStoreProvider:
             rag_api_url: RAG API 服务地址（必需参数）
             vector_field: 默认向量化字段名（可在初始化时指定）
         """
-        from .vectorstore_provider import CodeSplitter
+        # from .vectorstore_provider import CodeSplitter
         from .config import get_config
 
         if not rag_api_url:
             raise ValueError("RAG API URL is required")
 
         self.rag_client = RAGAPIClient(rag_api_url)
-        self.code_splitter = CodeSplitter()
+        # self.code_splitter = CodeSplitter()
         self.base_path = Path("./data/vectorstores")
         self.base_path.mkdir(parents=True, exist_ok=True)
         # 读取批量大小配置（<=0 表示一次性上传）
