@@ -129,81 +129,20 @@ const formatFileSize = (bytes: number): string => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 };
 
+// 使用统一的文件过滤配置
+import {
+  DEFAULT_IGNORE_DIRS,
+  DEFAULT_IGNORE_FILES,
+  shouldIgnoreFile,
+  shouldIgnoreDirectory
+} from "../utils/fileFilterConfig";
+
 // 默认应该不选择的文件和文件夹
 const getDefaultIgnorePatterns = () => {
-  const ignoreDirs = new Set([
-    ".git",
-    "__pycache__",
-    "node_modules",
-    ".venv",
-    "venv",
-    "env",
-    ".env",
-    "dist",
-    "build",
-    ".next",
-    ".nuxt",
-    "target",
-    ".pytest_cache",
-    ".cache",
-    ".parcel-cache",
-    "coverage",
-    ".nyc_output",
-    ".tox",
-    ".nox",
-    "htmlcov",
-    ".hypothesis",
-    "bower_components",
-    "jspm_packages",
-    ".rpt2_cache",
-    ".rts2_cache_cjs",
-    ".rts2_cache_es",
-    ".rts2_cache_umd",
-    ".eggs",
-    "*.egg-info",
-    ".installed.cfg",
-    ".ipynb_checkpoints",
-    ".mypy_cache",
-    ".dmypy.json",
-    ".pyre",
-    ".vscode",
-    ".idea",
-    "tmp",
-    "temp",
-    "logs",
-  ]);
-
-  const ignoreFiles = new Set([
-    ".gitignore",
-    ".env",
-    ".env.example",
-    ".env.local",
-    ".env.development",
-    ".env.test",
-    ".env.production",
-    "package-lock.json",
-    "yarn.lock",
-    "Pipfile.lock",
-    ".DS_Store",
-    "Thumbs.db",
-    "desktop.ini",
-    "npm-debug.log",
-    "yarn-debug.log",
-    "yarn-error.log",
-    "lerna-debug.log",
-    ".eslintcache",
-    ".tsbuildinfo",
-    ".coverage",
-    "coverage.xml",
-    "nosetests.xml",
-    ".manifest",
-    ".spec",
-    "pip-log.txt",
-    "pip-delete-this-directory.txt",
-    ".yarn-integrity",
-  ]);
-
-  return { ignoreDirs, ignoreFiles };
+  return {
+    ignoreDirs: DEFAULT_IGNORE_DIRS,
+    ignoreFiles: DEFAULT_IGNORE_FILES
+  };
 };
 
 // 检查文件或文件夹是否应该默认不选择
@@ -212,41 +151,11 @@ const shouldDefaultUnselect = (
   path: string,
   type: "file" | "folder"
 ): boolean => {
-  const { ignoreDirs, ignoreFiles } = getDefaultIgnorePatterns();
-
-  // 检查路径中是否包含被忽略的目录
-  const pathParts = path.split("/");
-  for (const part of pathParts) {
-    if (ignoreDirs.has(part)) {
-      return true; // 如果路径中包含被忽略的目录，则该文件/文件夹也应该被忽略
-    }
-  }
-
   if (type === "folder") {
-    return ignoreDirs.has(name);
+    return shouldIgnoreDirectory(name, path);
   } else {
-    // 检查完整文件名
-    if (ignoreFiles.has(name)) {
-      return true;
-    }
-
-    // 检查通配符模式
-    if (
-      name.endsWith(".log") ||
-      name.endsWith(".pyc") ||
-      name.endsWith(".pyo") ||
-      name.endsWith(".pyd") ||
-      name.endsWith(".so") ||
-      name.endsWith(".egg") ||
-      name.endsWith(".tgz") ||
-      name.startsWith(".DS_Store") ||
-      name.includes("debug.log")
-    ) {
-      return true;
-    }
+    return shouldIgnoreFile(name, path);
   }
-
-  return false;
 };
 
 // 构建文件树结构

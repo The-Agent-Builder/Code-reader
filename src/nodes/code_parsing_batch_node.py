@@ -53,36 +53,14 @@ class CodeParsingBatchNode(AsyncParallelBatchNode):
         logger.info(f"🔍 扫描源码文件: {local_path}")
 
         # 收集所有需要解析的代码文件
+        from src.utils.file_filter import FileFilter, SUPPORTED_CODE_EXTENSIONS
+
+        file_filter = FileFilter(local_path)
+        code_files = file_filter.scan_directory(local_path, SUPPORTED_CODE_EXTENSIONS)
+
         file_items = []
-        supported_extensions = {
-            ".py",
-            ".js",
-            ".ts",
-            ".java",
-            ".cpp",
-            ".c",
-            ".h",
-            ".hpp",
-            ".cs",
-            ".go",
-            ".rs",
-            ".php",
-            ".rb",
-            ".swift",
-            ".kt",
-            ".scala",
-            ".ipynb",
-        }
-
-        ignore_dirs = {".git", "__pycache__", "node_modules", ".venv", "venv", "env"}
-
-        for file_path in local_path.rglob("*"):
-            if file_path.is_file() and file_path.suffix.lower() in supported_extensions:
-                # 跳过忽略的目录
-                if any(ignore_dir in file_path.parts for ignore_dir in ignore_dirs):
-                    continue
-
-                try:
+        for file_path in code_files:
+            try:
                     if file_path.suffix.lower() == ".ipynb":
                         content = self._extract_notebook_content(file_path)
                         if not content:

@@ -201,61 +201,19 @@ class ResultStorage:
             if not repo_path.exists():
                 return stats
 
-            # 支持的代码文件扩展名
-            code_extensions = {
-                ".py",
-                ".js",
-                ".ts",
-                ".java",
-                ".cpp",
-                ".c",
-                ".h",
-                ".hpp",
-                ".cs",
-                ".go",
-                ".rs",
-                ".php",
-                ".rb",
-                ".swift",
-                ".kt",
-                ".scala",
-            }
+            # 使用统一的文件过滤器
+            from .file_filter import FileFilter, SUPPORTED_CODE_EXTENSIONS
 
-            # 需要排除的目录
-            exclude_dirs = {
-                ".git",
-                "__pycache__",
-                "node_modules",
-                ".venv",
-                "venv",
-                "env",
-                ".env",
-                "dist",
-                "build",
-                ".next",
-                ".nuxt",
-                "target",
-            }
+            file_filter = FileFilter(repo_path)
+            code_files = file_filter.scan_directory(repo_path, SUPPORTED_CODE_EXTENSIONS)
 
             total_functions = 0
             total_classes = 0
-            total_files = 0
+            total_files = len(code_files)
 
-            for file_path in repo_path.rglob("*"):
-                # 跳过目录和隐藏文件
-                if file_path.is_dir() or file_path.name.startswith("."):
-                    continue
-
-                # 跳过排除的目录中的文件
-                if any(exclude_dir in file_path.parts for exclude_dir in exclude_dirs):
-                    continue
-
-                # 只处理代码文件
-                if file_path.suffix.lower() in code_extensions:
-                    total_files += 1
-
-                    # 简单的函数和类统计（基于关键字匹配）
-                    try:
+            for file_path in code_files:
+                # 简单的函数和类统计（基于关键字匹配）
+                try:
                         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                             content = f.read()
 

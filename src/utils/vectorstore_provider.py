@@ -260,30 +260,10 @@ class ChromaVectorStore(BaseVectorStore):
 
     def _get_code_files(self, repo_path: Path) -> List[Path]:
         """获取所有代码文件"""
-        code_files = []
+        from .file_filter import FileFilter
 
-        # 忽略的目录和文件
-        ignore_dirs = {".git", "__pycache__", "node_modules", ".venv", "venv", "env"}
-        ignore_files = {".gitignore", ".env", "package-lock.json", "yarn.lock"}
-
-        for file_path in repo_path.rglob("*"):
-            # 跳过目录
-            if file_path.is_dir():
-                continue
-
-            # 跳过忽略的目录中的文件
-            if any(ignore_dir in file_path.parts for ignore_dir in ignore_dirs):
-                continue
-
-            # 跳过忽略的文件
-            if file_path.name in ignore_files:
-                continue
-
-            # 检查文件扩展名
-            if file_path.suffix.lower() in self.code_splitter.SUPPORTED_EXTENSIONS:
-                code_files.append(file_path)
-
-        return code_files
+        file_filter = FileFilter(repo_path)
+        return file_filter.scan_directory(repo_path, self.code_splitter.SUPPORTED_EXTENSIONS)
 
     async def search_similar(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
         """相似性搜索"""

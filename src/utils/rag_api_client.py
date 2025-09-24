@@ -381,54 +381,14 @@ class RAGVectorStoreProvider:
 
     def _get_code_files(self, repo_path: Path) -> List[Path]:
         """获取所有代码文件"""
-        code_files = []
+        from .file_filter import FileFilter, SUPPORTED_CODE_EXTENSIONS
 
-        # 忽略的目录和文件
-        ignore_dirs = {".git", "__pycache__", "node_modules", ".venv", "venv", "env", ".pytest_cache"}
-        ignore_files = {".gitignore", ".env", ".env.example", "requirements.txt", "package.json"}
+        # 支持的文档文件扩展名
+        doc_extensions = {".md", ".mdx", ".rst", ".txt", ".adoc"}
+        allowed_extensions = SUPPORTED_CODE_EXTENSIONS | doc_extensions
 
-        # 支持的代码与文档文件扩展名
-        code_extensions = {
-            ".py",
-            ".js",
-            ".ts",
-            ".java",
-            ".cpp",
-            ".c",
-            ".h",
-            ".hpp",
-            ".cs",
-            ".go",
-            ".rs",
-            ".php",
-            ".rb",
-            ".swift",
-            ".kt",
-            ".scala",
-            ".ipynb",
-        }
-        doc_extensions = {
-            ".md",
-            ".mdx",
-            ".rst",
-            ".txt",
-            ".adoc",
-        }
-        allowed_extensions = code_extensions | doc_extensions
-
-        for file_path in repo_path.rglob("*"):
-            if file_path.is_file():
-                # 检查是否在忽略目录中
-                if any(ignore_dir in file_path.parts for ignore_dir in ignore_dirs):
-                    continue
-
-                # 检查是否是忽略文件
-                if file_path.name in ignore_files:
-                    continue
-
-                # 检查文件扩展名（代码或文档）
-                if file_path.suffix.lower() in allowed_extensions:
-                    code_files.append(file_path)
+        file_filter = FileFilter(repo_path)
+        code_files = file_filter.scan_directory(repo_path, allowed_extensions)
 
         logger.info(f"找到 {len(code_files)} 个代码/文档文件")
         return code_files

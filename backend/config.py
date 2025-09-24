@@ -3,6 +3,7 @@
 """
 
 import os
+from urllib.parse import quote_plus
 from dotenv import load_dotenv
 
 # 加载环境变量
@@ -33,7 +34,10 @@ class Settings:
     @property
     def database_url(self) -> str:
         """构建数据库连接URL"""
-        return f"{self.DB_DIALECT}://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}?{self.DB_PARAMS}"
+        # 对用户名和密码进行URL编码，处理特殊字符
+        encoded_user = quote_plus(self.DB_USER)
+        encoded_password = quote_plus(self.DB_PASSWORD)
+        return f"{self.DB_DIALECT}://{encoded_user}:{encoded_password}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}?{self.DB_PARAMS}"
 
     # GitHub API配置
     GITHUB_TOKEN: str = os.getenv("GITHUB_TOKEN", "")
