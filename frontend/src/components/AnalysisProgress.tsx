@@ -783,50 +783,7 @@ log_file = "app.log"
             }));
             return false;
           }
-
-        case 2: // 分析数据模型
-          console.log("开始分析数据模型...");
-          if (!taskId) {
-            console.error("任务ID不存在，无法执行分析数据模型");
-            return false;
-          }
-
-          try {
-            // 调用后端分析数据模型flow，等待完成
-            console.log("触发分析数据模型flow，等待完成...");
-            const flowResult = await api.analyzeDataModelFlow(taskId);
-            console.log("分析数据模型完成:", flowResult);
-
-            if (flowResult.status !== "success") {
-              console.error("分析数据模型失败:", flowResult.message);
-              return false;
-            }
-
-            console.log(
-              `分析数据模型成功，创建了 ${
-                flowResult.analysis_items_count || 0
-              } 个分析项`
-            );
-
-            // 更新模块数量（分析项数量）
-            const newModuleCount = flowResult.analysis_items_count || 0;
-            setModuleCount(newModuleCount);
-
-            // 同时更新ref
-            statsRef.current = {
-              ...statsRef.current,
-              moduleCount: newModuleCount,
-            };
-
-            console.log("📊 更新模块数量后的统计ref:", statsRef.current);
-
-            return true;
-          } catch (error) {
-            console.error("分析数据模型过程中出错:", error);
-            return false;
-          }
-
-        case 3: // 生成文档结构
+        case 2: // 生成文档结构
           console.log("开始生成文档结构...");
           if (!taskId) {
             console.error("任务ID不存在，无法生成文档结构");
