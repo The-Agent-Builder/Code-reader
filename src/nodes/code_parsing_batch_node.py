@@ -61,53 +61,53 @@ class CodeParsingBatchNode(AsyncParallelBatchNode):
         file_items = []
         for file_path in code_files:
             try:
-                    if file_path.suffix.lower() == ".ipynb":
-                        content = self._extract_notebook_content(file_path)
-                        if not content:
-                            continue
-                    else:
-                        with open(file_path, "r", encoding="utf-8") as f:
-                            content = f.read()
+                if file_path.suffix.lower() == ".ipynb":
+                    content = self._extract_notebook_content(file_path)
+                    if not content:
+                        continue
+                else:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        content = f.read()
 
-                    # 跳过空文件或过大的文件
-                    # if len(content.strip()) == 0 or len(content) > 50000:
-                    #     continue
+                # 跳过空文件或过大的文件
+                # if len(content.strip()) == 0 or len(content) > 50000:
+                #     continue
 
-                    # 确定语言
-                    language_map = {
-                        ".py": "python",
-                        ".js": "javascript",
-                        ".ts": "typescript",
-                        ".java": "java",
-                        ".cpp": "cpp",
-                        ".c": "c",
-                        ".h": "c",
-                        ".hpp": "cpp",
-                        ".cs": "csharp",
-                        ".go": "go",
-                        ".rs": "rust",
-                        ".php": "php",
-                        ".rb": "ruby",
-                        ".swift": "swift",
-                        ".kt": "kotlin",
-                        ".scala": "scala",
-                        ".ipynb": "jupyter",
+                # 确定语言
+                language_map = {
+                    ".py": "python",
+                    ".js": "javascript",
+                    ".ts": "typescript",
+                    ".java": "java",
+                    ".cpp": "cpp",
+                    ".c": "c",
+                    ".h": "c",
+                    ".hpp": "cpp",
+                    ".cs": "csharp",
+                    ".go": "go",
+                    ".rs": "rust",
+                    ".php": "php",
+                    ".rb": "ruby",
+                    ".swift": "swift",
+                    ".kt": "kotlin",
+                    ".scala": "scala",
+                    ".ipynb": "jupyter",
+                }
+                language = language_map.get(file_path.suffix.lower(), "text")
+
+                file_items.append(
+                    {
+                        "file_path": str(file_path.relative_to(local_path)),
+                        "content": content,
+                        "language": language,
+                        "full_path": str(file_path),
+                        "vectorstore_index": vectorstore_index,
                     }
-                    language = language_map.get(file_path.suffix.lower(), "text")
+                )
 
-                    file_items.append(
-                        {
-                            "file_path": str(file_path.relative_to(local_path)),
-                            "content": content,
-                            "language": language,
-                            "full_path": str(file_path),
-                            "vectorstore_index": vectorstore_index,
-                        }
-                    )
-
-                except Exception as e:
-                    logger.warning(f"Failed to read file {file_path}: {str(e)}")
-                    continue
+            except Exception as e:
+                logger.warning(f"Failed to read file {file_path}: {str(e)}")
+                continue
 
         logger.info(f"准备解析 {len(file_items)} 个文件")
 

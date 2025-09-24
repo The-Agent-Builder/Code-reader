@@ -214,40 +214,40 @@ class ResultStorage:
             for file_path in code_files:
                 # 简单的函数和类统计（基于关键字匹配）
                 try:
-                        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                            content = f.read()
+                    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                        content = f.read()
 
-                            # 根据文件类型统计函数和类
-                            if file_path.suffix == ".py":
-                                # Python: def 和 class
-                                import re
+                        # 根据文件类型统计函数和类
+                        if file_path.suffix == ".py":
+                            # Python: def 和 class
+                            import re
 
-                                functions = re.findall(r"^\s*def\s+\w+", content, re.MULTILINE)
-                                classes = re.findall(r"^\s*class\s+\w+", content, re.MULTILINE)
-                                total_functions += len(functions)
-                                total_classes += len(classes)
-                            elif file_path.suffix in {".js", ".ts"}:
-                                # JavaScript/TypeScript: function 和 class
-                                import re
+                            functions = re.findall(r"^\s*def\s+\w+", content, re.MULTILINE)
+                            classes = re.findall(r"^\s*class\s+\w+", content, re.MULTILINE)
+                            total_functions += len(functions)
+                            total_classes += len(classes)
+                        elif file_path.suffix in {".js", ".ts"}:
+                            # JavaScript/TypeScript: function 和 class
+                            import re
 
-                                functions = re.findall(r"function\s+\w+|=>\s*{|\w+\s*:\s*function", content)
-                                classes = re.findall(r"class\s+\w+", content)
-                                total_functions += len(functions)
-                                total_classes += len(classes)
-                            elif file_path.suffix == ".java":
-                                # Java: public/private/protected methods 和 class
-                                import re
+                            functions = re.findall(r"function\s+\w+|=>\s*{|\w+\s*:\s*function", content)
+                            classes = re.findall(r"class\s+\w+", content)
+                            total_functions += len(functions)
+                            total_classes += len(classes)
+                        elif file_path.suffix == ".java":
+                            # Java: public/private/protected methods 和 class
+                            import re
 
-                                functions = re.findall(r"(public|private|protected).*?\w+\s*\([^)]*\)\s*{", content)
-                                classes = re.findall(r"(public|private)?\s*class\s+\w+", content)
-                                total_functions += len(functions)
-                                total_classes += len(classes)
-                            # 可以继续添加其他语言的支持
+                            functions = re.findall(r"(public|private|protected).*?\w+\s*\([^)]*\)\s*{", content)
+                            classes = re.findall(r"(public|private)?\s*class\s+\w+", content)
+                            total_functions += len(functions)
+                            total_classes += len(classes)
+                        # 可以继续添加其他语言的支持
 
-                    except Exception as e:
-                        # 如果读取文件失败，跳过但不影响整体统计
-                        logger.debug(f"无法读取文件 {file_path}: {str(e)}")
-                        continue
+                except Exception as e:
+                    # 如果读取文件失败，跳过但不影响整体统计
+                    logger.debug(f"无法读取文件 {file_path}: {str(e)}")
+                    continue
 
             stats["total_files"] = total_files
             stats["total_functions"] = total_functions
