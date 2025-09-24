@@ -11,58 +11,58 @@ import ChatPage from "../pages/ChatPage";
 import ProtectedRoute from "../components/ProtectedRoute";
 
 export const router = createBrowserRouter([
-    {
-        path: "/",
-        element: <Layout />,
-        children: [
-            {
-                index: true,
-                element: <Navigate to="/home" replace />,
-            },
-            {
-                path: "home",
-                element: <HomePage />,
-            },
-            {
-                path: "upload",
-                element: (
-                    <ProtectedRoute>
-                        <UploadPage />
-                    </ProtectedRoute>
-                ),
-            },
-            {
-                path: "config",
-                element: (
-                    <ProtectedRoute>
-                        <ConfigPage />
-                    </ProtectedRoute>
-                ),
-            },
-            {
-                path: "analysis",
-                element: (
-                    <ProtectedRoute>
-                        <AnalysisPage />
-                    </ProtectedRoute>
-                ),
-            },
-            {
-                path: "result/:projectName",
-                element: <DeepWikiPage />,
-            },
-            {
-                path: "background",
-                element: <BackgroundPage />,
-            },
-            {
-                path: "profile",
-                element: <ProfilePage />,
-            },
-            {
-                path: "chat",
-                element: <ChatPage />,
-            },
-        ],
-    },
+  {
+    path: "/",
+    element: <Layout />,
+    children: [
+      {
+        index: true,
+        element: <Navigate to="/home" replace />,
+      },
+      {
+        path: "home",
+        element: <HomePage />,
+      },
+      {
+        path: "upload",
+        element: (
+          <ProtectedRoute>
+            <UploadPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "config",
+        element: (
+          <ProtectedRoute>
+            <ConfigPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "analysis",
+        element: (
+          <ProtectedRoute>
+            <AnalysisPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "result/:projectName",
+        element: <DeepWikiPage />,
+      },
+      {
+        path: "background",
+        element: <BackgroundPage />,
+      },
+      {
+        path: "profile",
+        element: <ProfilePage />,
+      },
+      {
+        path: "chat",
+        element: <ChatPage />,
+      },
+    ],
+  },
 ]);
