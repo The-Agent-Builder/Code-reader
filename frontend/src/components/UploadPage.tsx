@@ -36,7 +36,7 @@ export default function UploadPage({
 
       return () => clearInterval(animationInterval);
     }
-  }, [totalAnalyzedProjects, animatingNumber]);
+  }, [totalAnalyzedProjects]); // 移除 animatingNumber 依赖，避免无限循环
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
