@@ -5,6 +5,7 @@ import AnalysisProgress from "./components/AnalysisProgress";
 import DeepWikiInterface from "./components/DeepWikiInterface";
 import PersonalSpace from "./components/PersonalSpace";
 import ChatInterface from "./components/ChatInterface";
+import MermaidPreloader from "./utils/mermaidPreloader";
 
 type AppState =
   | "upload"
@@ -71,6 +72,11 @@ export default function App() {
     }, 8000 + Math.random() * 12000); // 8-20秒间隔，更自然
 
     return () => clearInterval(updateInterval);
+  }, []);
+
+  // 预加载 Mermaid 库
+  useEffect(() => {
+    MermaidPreloader.preload();
   }, []);
 
   const handleStartAnalysis = (config: AnalysisConfiguration) => {

@@ -1,10 +1,12 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, memo, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { api } from "../services/api";
 import { findFileInTree, FileNode, normalizePath } from "../utils/fileTree";
+import MermaidDiagram from "./MermaidDiagram";
+import "./MermaidDiagram.css";
 
 interface TaskStatistics {
   code_lines: number;
@@ -32,7 +34,7 @@ const generateSectionId = (title: string): string => {
     .replace(/^-+|-+$/g, ""); // 移除开头和结尾的连字符
 };
 
-export function MainContent({
+const MainContent = memo(function MainContent({
   activeSection,
   onSectionChange,
   onFileSelect,
@@ -150,6 +152,204 @@ export function MainContent({
       scrollContainer.removeEventListener("scroll", handleScroll);
     };
   }, [markdownContent, activeSection, onSectionChange]);
+
+  // 使用 useMemo 缓存 ReactMarkdown 的 components 配置，避免每次渲染都重新创建
+  const markdownComponents = useMemo(() => ({
+    // 自定义标题样式，添加ID用于导航定位
+    h1: ({ children, ...props }: any) => {
+      const text = children?.toString() || "";
+      const id = generateSectionId(text);
+      return (
+        <h1
+          id={id}
+          className="text-3xl font-bold text-gray-900 mb-6 border-b border-gray-200 pb-3 scroll-mt-4"
+          {...props}
+        >
+          {children}
+        </h1>
+      );
+    },
+    h2: ({ children, ...props }: any) => {
+      const text = children?.toString() || "";
+      const id = generateSectionId(text);
+      return (
+        <h2
+          id={id}
+          className="text-2xl font-semibold text-gray-800 mb-4 mt-8 scroll-mt-4"
+          {...props}
+        >
+          {children}
+        </h2>
+      );
+    },
+    h3: ({ children, ...props }: any) => (
+      <h3
+        className="text-xl font-medium text-gray-700 mb-3 mt-6"
+        {...props}
+      >
+        {children}
+      </h3>
+    ),
+    // 自定义段落样式
+    p: ({ children, ...props }: any) => (
+      <p
+        className="text-gray-700 leading-relaxed mb-4"
+        {...props}
+      >
+        {children}
+      </p>
+    ),
+    // 自定义列表样式
+    ul: ({ children, ...props }: any) => (
+      <ul
+        className="list-disc list-inside mb-4 space-y-2 text-gray-700"
+        {...props}
+      >
+        {children}
+      </ul>
+    ),
+    ol: ({ children, ...props }: any) => (
+      <ol
+        className="list-decimal list-inside mb-4 space-y-2 text-gray-700"
+        {...props}
+      >
+        {children}
+      </ol>
+    ),
+    li: ({ children, ...props }: any) => (
+      <li className="ml-4" {...props}>
+        {children}
+      </li>
+    ),
+    // 自定义链接渲染，处理文件链接
+    a: ({ href, children, ...props }: any) => {
+      // 如果没有href，渲染为普通文本
+      if (!href) {
+        return <span {...props}>{children}</span>;
+      }
+
+      // 标准化文件路径：URL解码 + 路径分隔符标准化
+      const normalizedHref = normalizePath(href);
+
+      // 检查文件是否存在于文件树中
+      const fileExists = findFileInTree(fileTree, normalizedHref);
+
+      if (fileExists) {
+        // 文件存在，渲染为可点击的链接
+        return (
+          <button
+            className="text-blue-600 hover:text-blue-800 underline font-medium transition-colors"
+            onClick={() => onFileHighlight(normalizedHref)}
+            title={`定位到文件: ${normalizedHref}`}
+            {...props}
+          >
+            {children}
+          </button>
+        );
+      } else {
+        // 文件不存在，渲染为普通文本（不同字体样式）
+        return (
+          <span
+            className="text-gray-500 font-mono text-sm bg-gray-100 px-1 py-0.5 rounded"
+            title={`文件不存在: ${normalizedHref}`}
+            {...props}
+          >
+            {children}
+          </span>
+        );
+      }
+    },
+    // 自定义代码块样式，支持 Mermaid 图表
+    code: ({ className, children, ...props }: any) => {
+      const isInline = !className;
+      const language = className?.replace('language-', '') || '';
+      const codeContent = String(children).replace(/\n$/, '');
+
+      // 检查是否为 Mermaid 图表 - 直接返回组件，不包装在任何容器中
+      if (language === 'mermaid') {
+        return (
+          <div className="mermaid-wrapper" style={{ background: 'transparent', margin: '1rem 0' }}>
+            <MermaidDiagram chart={codeContent} />
+          </div>
+        );
+      }
+
+      return (
+        <code
+          className={`${className} ${
+            isInline
+              ? "bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono text-gray-800"
+              : ""
+          }`}
+          {...props}
+        >
+          {children}
+        </code>
+      );
+    },
+    // 自定义预格式化代码块
+    pre: ({ children, ...props }: any) => {
+      // 检查子元素是否为 Mermaid 包装器
+      if (React.isValidElement(children) &&
+          (children.props as any)?.className === 'mermaid-wrapper') {
+        return children;
+      }
+
+      // 检查子元素是否为 Mermaid 组件
+      if (React.isValidElement(children) && children.type === MermaidDiagram) {
+        return children;
+      }
+
+      // 检查子元素是否包含 Mermaid 代码
+      if (React.isValidElement(children) &&
+          (children.props as any)?.className?.includes('language-mermaid')) {
+        return children;
+      }
+
+      return (
+        <pre
+          className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto mb-4 text-sm font-mono"
+          {...props}
+        >
+          {children}
+        </pre>
+      );
+    },
+    // 自定义引用块
+    blockquote: ({ children, ...props }: any) => (
+      <blockquote
+        className="border-l-4 border-blue-500 pl-4 py-2 mb-4 bg-blue-50 text-gray-700 italic"
+        {...props}
+      >
+        {children}
+      </blockquote>
+    ),
+    // 自定义表格
+    table: ({ children, ...props }: any) => (
+      <div className="overflow-x-auto mb-4">
+        <table
+          className="min-w-full border border-gray-300"
+          {...props}
+        >
+          {children}
+        </table>
+      </div>
+    ),
+    th: ({ children, ...props }: any) => (
+      <th
+        className="border border-gray-300 px-4 py-2 bg-gray-100 font-semibold text-left"
+        {...props}
+      >
+        {children}
+      </th>
+    ),
+    td: ({ children, ...props }: any) => (
+      <td className="border border-gray-300 px-4 py-2" {...props}>
+        {children}
+      </td>
+    ),
+  }), [fileTree, onFileHighlight]);
+
   const renderContent = () => {
     // 如果是项目概览，显示固定的概览内容
     if (activeSection === "overview") {
@@ -213,172 +413,7 @@ export function MainContent({
             <div className="markdown-content max-w-none">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
-                components={{
-                  // 自定义标题样式，添加ID用于导航定位
-                  h1: ({ children, ...props }) => {
-                    const text = children?.toString() || "";
-                    const id = generateSectionId(text);
-                    return (
-                      <h1
-                        id={id}
-                        className="text-3xl font-bold text-gray-900 mb-6 border-b border-gray-200 pb-3 scroll-mt-4"
-                        {...props}
-                      >
-                        {children}
-                      </h1>
-                    );
-                  },
-                  h2: ({ children, ...props }) => {
-                    const text = children?.toString() || "";
-                    const id = generateSectionId(text);
-                    return (
-                      <h2
-                        id={id}
-                        className="text-2xl font-semibold text-gray-800 mb-4 mt-8 scroll-mt-4"
-                        {...props}
-                      >
-                        {children}
-                      </h2>
-                    );
-                  },
-                  h3: ({ children, ...props }) => (
-                    <h3
-                      className="text-xl font-medium text-gray-700 mb-3 mt-6"
-                      {...props}
-                    >
-                      {children}
-                    </h3>
-                  ),
-                  // 自定义段落样式
-                  p: ({ children, ...props }) => (
-                    <p
-                      className="text-gray-700 leading-relaxed mb-4"
-                      {...props}
-                    >
-                      {children}
-                    </p>
-                  ),
-                  // 自定义列表样式
-                  ul: ({ children, ...props }) => (
-                    <ul
-                      className="list-disc list-inside mb-4 space-y-2 text-gray-700"
-                      {...props}
-                    >
-                      {children}
-                    </ul>
-                  ),
-                  ol: ({ children, ...props }) => (
-                    <ol
-                      className="list-decimal list-inside mb-4 space-y-2 text-gray-700"
-                      {...props}
-                    >
-                      {children}
-                    </ol>
-                  ),
-                  li: ({ children, ...props }) => (
-                    <li className="ml-4" {...props}>
-                      {children}
-                    </li>
-                  ),
-                  // 自定义链接渲染，处理文件链接
-                  a: ({ href, children, ...props }) => {
-                    // 如果没有href，渲染为普通文本
-                    if (!href) {
-                      return <span {...props}>{children}</span>;
-                    }
-
-                    // 标准化文件路径：URL解码 + 路径分隔符标准化
-                    const normalizedHref = normalizePath(href);
-
-                    // 检查文件是否存在于文件树中
-                    const fileExists = findFileInTree(fileTree, normalizedHref);
-
-                    if (fileExists) {
-                      // 文件存在，渲染为可点击的链接
-                      return (
-                        <button
-                          className="text-blue-600 hover:text-blue-800 underline font-medium transition-colors"
-                          onClick={() => onFileHighlight(normalizedHref)}
-                          title={`定位到文件: ${normalizedHref}`}
-                          {...props}
-                        >
-                          {children}
-                        </button>
-                      );
-                    } else {
-                      // 文件不存在，渲染为普通文本（不同字体样式）
-                      return (
-                        <span
-                          className="text-gray-500 font-mono text-sm bg-gray-100 px-1 py-0.5 rounded"
-                          title={`文件不存在: ${normalizedHref}`}
-                          {...props}
-                        >
-                          {children}
-                        </span>
-                      );
-                    }
-                  },
-                  // 自定义代码块样式
-                  code: ({ className, children, ...props }) => {
-                    const isInline = !className;
-                    return (
-                      <code
-                        className={`${className} ${
-                          isInline
-                            ? "bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono text-gray-800"
-                            : ""
-                        }`}
-                        {...props}
-                      >
-                        {children}
-                      </code>
-                    );
-                  },
-                  // 自定义预格式化代码块
-                  pre: ({ children, ...props }) => {
-                    return (
-                      <pre
-                        className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto mb-4 text-sm font-mono"
-                        {...props}
-                      >
-                        {children}
-                      </pre>
-                    );
-                  },
-                  // 自定义引用块
-                  blockquote: ({ children, ...props }) => (
-                    <blockquote
-                      className="border-l-4 border-blue-500 pl-4 py-2 mb-4 bg-blue-50 text-gray-700 italic"
-                      {...props}
-                    >
-                      {children}
-                    </blockquote>
-                  ),
-                  // 自定义表格
-                  table: ({ children, ...props }) => (
-                    <div className="overflow-x-auto mb-4">
-                      <table
-                        className="min-w-full border border-gray-300"
-                        {...props}
-                      >
-                        {children}
-                      </table>
-                    </div>
-                  ),
-                  th: ({ children, ...props }) => (
-                    <th
-                      className="border border-gray-300 px-4 py-2 bg-gray-100 font-semibold text-left"
-                      {...props}
-                    >
-                      {children}
-                    </th>
-                  ),
-                  td: ({ children, ...props }) => (
-                    <td className="border border-gray-300 px-4 py-2" {...props}>
-                      {children}
-                    </td>
-                  ),
-                }}
+                components={markdownComponents}
               >
                 {markdownContent}
               </ReactMarkdown>
@@ -941,4 +976,6 @@ export function MainContent({
   };
 
   return <div className="p-8 max-w-none">{renderContent()}</div>;
-}
+});
+
+export { MainContent };

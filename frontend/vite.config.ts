@@ -8,6 +8,13 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    optimizeDeps: {
+      include: ["mermaid"],
+      exclude: [],
+      esbuildOptions: {
+        target: 'esnext'
+      }
+    },
     resolve: {
       extensions: [".js", ".jsx", ".ts", ".tsx", ".json"],
       alias: {
