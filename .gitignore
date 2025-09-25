@@ -240,3 +240,4 @@ data/repos/
 data/results/
 data/vectorstores/
 bash.exe.stackdump
+backend/data/

@@ -2,7 +2,9 @@
  * API服务类 - 用于与后端API通信
  */
 
-const API_BASE_URL = "";
+// 在 Docker 容器中，通过 Nginx 反向代理访问后端 API
+// 使用相对路径，避免跨域问题
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 // 类型定义
 export interface RepositoryInfo {
@@ -1377,9 +1379,19 @@ export class ApiService {
         task_id?: string;
     }> {
         try {
-            // 从环境变量获取README_API_BASE_URL，默认使用相对路径
+            // 从环境变量获取 README API Base URL（优先 VITE_README_API_BASE_URL，其次 README_API_BASE_URL），不再使用相对路径默认值，避免误指向前端 3000 端口
             const readmeApiBaseUrl =
-                import.meta.env.VITE_README_API_BASE_URL || "/deepwiki";
+                (import.meta.env.VITE_README_API_BASE_URL as string) ||
+                ((import.meta.env as any).README_API_BASE_URL as string) ||
+                "";
+
+            if (!readmeApiBaseUrl) {
+                console.error("README API Base URL 未配置，请在根目录 .env 设置 README_API_BASE_URL 或 frontend/.env 设置 VITE_README_API_BASE_URL");
+                return {
+                    status: "error",
+                    message: "README API Base URL 未配置",
+                };
+            }
 
             // 修改localPath为 env中deepwiki_uoload_filepath/$localPath最后一级目录名$
             const deepwikiUploadFilepath = import.meta.env.VITE_DEEPWIKI_UPLOAD_FILEPATH || "/app/data/uploads";
@@ -1452,9 +1464,19 @@ export class ApiService {
         };
     }> {
         try {
-            // 从环境变量获取README_API_BASE_URL，默认使用相对路径
+            // 从环境变量获取 README API Base URL（优先 VITE_README_API_BASE_URL，其次 README_API_BASE_URL），不再使用相对路径默认值，避免误指向前端 3000 端口
             const readmeApiBaseUrl =
-                import.meta.env.VITE_README_API_BASE_URL || "/deepwiki";
+                (import.meta.env.VITE_README_API_BASE_URL as string) ||
+                ((import.meta.env as any).README_API_BASE_URL as string) ||
+                "";
+
+            if (!readmeApiBaseUrl) {
+                console.error("README API Base URL 未配置，请在根目录 .env 设置 README_API_BASE_URL 或 frontend/.env 设置 VITE_README_API_BASE_URL");
+                return {
+                    status: "error",
+                    message: "README API Base URL 未配置",
+                };
+            }
                 
 
             console.log(`检查文档生成状态，任务ID: ${readmeApiTaskId}`);

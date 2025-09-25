@@ -783,7 +783,41 @@ log_file = "app.log"
             }));
             return false;
           }
-        case 2: // 生成文档结构
+
+	        case 2: // 分析数据模型
+	          console.log("开始分析数据模型...");
+	          if (!taskId) {
+	            console.error("任务ID不存在，无法执行分析数据模型");
+	            return false;
+	          }
+
+	          try {
+	            const dmResult = await api.analyzeDataModelFlow(taskId);
+
+	            if (dmResult.status !== "success") {
+	              console.error("分析数据模型失败:", dmResult.message);
+	              return false;
+	            }
+
+	            // 根据后端返回更新统计信息（若可用）
+	            if (typeof dmResult.successful_files === "number") {
+	              statsRef.current = {
+	                ...statsRef.current,
+	                successfulFiles: dmResult.successful_files ?? statsRef.current.successfulFiles,
+	                failedFiles: dmResult.failed_files ?? statsRef.current.failedFiles,
+	              };
+	              setSuccessfulFiles(statsRef.current.successfulFiles);
+	              setFailedFiles(statsRef.current.failedFiles);
+	            }
+
+	            console.log("分析数据模型步骤完成");
+	            return true;
+	          } catch (error) {
+	            console.error("分析数据模型过程中出错:", error);
+	            return false;
+	          }
+
+        case 3: // 生成文档结构
           console.log("开始生成文档结构...");
           if (!taskId) {
             console.error("任务ID不存在，无法生成文档结构");
