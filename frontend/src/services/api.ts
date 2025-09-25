@@ -2,9 +2,9 @@
  * API服务类 - 用于与后端API通信
  */
 
-// 在开发环境中，直接访问后端API服务器
-// 在生产环境中，通过 Nginx 反向代理访问后端 API
-const API_BASE_URL = import.meta.env.PROD ? "" : "http://localhost:8000";
+// 在 Docker 容器中，通过 Nginx 反向代理访问后端 API
+// 使用相对路径，避免跨域问题
+const API_BASE_URL = "";
 
 // 类型定义
 export interface RepositoryInfo {
