@@ -3,8 +3,8 @@
  */
 
 // 在 Docker 容器中，通过 Nginx 反向代理访问后端 API
-// 使用相对路径，避免跨域问题
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+// 使用当前域名，避免跨域问题
+const API_BASE_URL = window.location.origin;
 
 // 类型定义
 export interface RepositoryInfo {
@@ -747,6 +747,26 @@ export class ApiService {
 
         const result = await response.json();
         console.log(`Upload response:`, result);
+        return result;
+    }
+
+    async createTaskFromZip(zipFile: File): Promise<{
+        status: string;
+        message: string;
+        task_id: number;
+    }> {
+        const formData = new FormData();
+        formData.append('zip_file', zipFile);
+        
+        const response = await fetch(`${this.baseUrl}/api/v1/tasks/create-task-from-zip`, {
+            method: "POST",
+            body: formData,
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const result = await response.json();
+        console.log(`Create task from zip response:`, result);
         return result;
     }
 
@@ -1718,7 +1738,8 @@ export const api = {
     // 上传相关
     uploadRepository: (files: FileList, repositoryName: string) =>
         apiService.uploadRepository(files, repositoryName),
-
+    createTaskFromZip: (zipFile: File) =>
+        apiService.createTaskFromZip(zipFile),
     // 分析任务相关
     createAnalysisTask: (taskData: {
         repository_id: number;

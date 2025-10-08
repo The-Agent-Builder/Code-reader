@@ -11,6 +11,7 @@ import os
 from dotenv import load_dotenv
 from database import test_database_connection, get_database_info
 from routers import repository_router, analysis_router, auth_router
+from api.v1.tasks import tasks_router
 from config import settings
 from pathlib import Path
 
@@ -67,6 +68,7 @@ app.add_middleware(
 app.include_router(repository_router)
 app.include_router(analysis_router)
 app.include_router(auth_router)
+app.include_router(tasks_router)
 
 
 @app.get("/health", tags=["系统监控"])
@@ -178,4 +180,4 @@ if __name__ == "__main__":
     port = int(os.getenv("APP_PORT", 8000))
 
     # 启动服务器
-    uvicorn.run("main:app", host=host, port=port, reload=True, log_level="info")  # 开发模式下启用热重载
+    uvicorn.run("main:app", host=host, port=port, reload=False, log_level="info", reload_excludes=["data/**"])  # 开发模式下启用热重载，排除data目录

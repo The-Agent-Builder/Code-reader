@@ -1,8 +1,10 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Checkbox } from "./ui/checkbox";
+import JSZip from "jszip";
 
 import { ScrollArea } from "./ui/scroll-area";
 import { Separator } from "./ui/separator";
@@ -454,7 +456,7 @@ const FileTreeNodeComponent = ({
   // 使用 useEffect 来设置 indeterminate 状态
   useEffect(() => {
     if (checkboxRef.current) {
-      checkboxRef.current.indeterminate = isPartiallySelected;
+      checkboxRef.current.indeterminate = isPartiallySelected || false;
     }
   }, [isPartiallySelected]);
 
@@ -576,6 +578,7 @@ export default function AnalysisConfig({
 }: AnalysisConfigProps) {
   // 固定使用整体分析模式
   const analysisMode = "overall";
+  const navigate = useNavigate();
   const [fileTree, setFileTree] = useState<FileTreeNode>(() =>
     buildFileTree(selectedFiles)
   );
@@ -653,6 +656,89 @@ export default function AnalysisConfig({
     const newSelected = stats.selected !== stats.total;
     toggleNodeSelection(fileTree, newSelected);
     updateTreeSelection(fileTree);
+  };
+
+  const handleCreateTaskFromZip = async () => {
+    const selectedFilePaths = getSelectedFiles(fileTree);
+    
+    if (selectedFilePaths.length === 0) {
+      console.warn("没有选中的文件");
+      return;
+    }
+
+    // 设置上传状态
+    setUploadState({
+      isUploading: true,
+      progress: 0,
+      error: null,
+      success: false,
+    });
+
+    try {
+      // 创建JSZip实例
+      const zip = new JSZip();
+
+      // 更新进度
+      setUploadState(prev => ({ ...prev, progress: 10 }));
+
+      // 遍历所有原始文件，找到选中的文件并添加到zip中
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        const filePath = file.webkitRelativePath || file.name;
+        
+        // 检查这个文件是否被选中
+        if (selectedFilePaths.includes(filePath)) {
+          // 添加文件到zip中，保留文件夹结构
+          zip.file(filePath, file);
+          console.log(`添加文件到压缩包: ${filePath}`);
+        }
+      }
+
+      // 更新进度
+      setUploadState(prev => ({ ...prev, progress: 50 }));
+
+      // 生成zip文件
+      console.log("正在生成压缩包...");
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      
+      // 创建File对象
+      const zipFile = new File([zipBlob], `${repositoryName}.zip`, { 
+        type: "application/zip" 
+      });
+      
+      console.log(`压缩包生成完成，大小: ${formatFileSize(zipFile.size)}`);
+      console.log(`包含 ${selectedFilePaths.length} 个文件`);
+
+      // 更新进度
+      setUploadState(prev => ({ ...prev, progress: 80 }));
+
+      // 调用API创建任务
+      const taskResult = await api.createTaskFromZip(zipFile);
+      console.log("Create task from zip result:", taskResult);
+      
+      // 任务创建成功
+      setUploadState({
+        isUploading: false,
+        progress: 100,
+        error: null,
+        success: true,
+      });
+
+      // 显示成功状态一段时间后返回主页
+      setTimeout(() => {
+        console.log("任务创建成功，返回主页");
+        navigate("/home");
+      }, 1500);
+      
+    } catch (error) {
+      console.error("创建压缩包失败:", error);
+      setUploadState({
+        isUploading: false,
+        progress: 0,
+        error: error instanceof Error ? error.message : "创建任务失败，请重试",
+        success: false,
+      });
+    }
   };
 
   const handleStartAnalysis = async () => {
@@ -738,7 +824,7 @@ export default function AnalysisConfig({
         // 前端主动创建分析任务
         try {
           const taskResult = await api.createAnalysisTask({
-            repository_id: uploadResult.repository_id,
+            repository_id: uploadResult.repository_id || 0,
             total_files: selectedFilePaths.length,
             status: "pending",
           });
@@ -811,7 +897,7 @@ export default function AnalysisConfig({
               </Button>
 
               <Button
-                onClick={handleStartAnalysis}
+                onClick={handleCreateTaskFromZip}
                 disabled={stats.selected === 0 || uploadState.isUploading}
                 className="px-8"
               >

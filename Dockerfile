@@ -5,10 +5,18 @@ FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/node:20-alpine3.
 WORKDIR /app/frontend
 
 # 复制前端依赖文件
-COPY frontend/package.json frontend/package-lock.json ./
+COPY frontend/package.json frontend/pnpm-lock.yaml ./
+
+# 安装pnpm并配置存储目录
+RUN npm install -g pnpm@latest
+
+# 设置pnpm配置优化构建速度
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
 
 # 安装前端依赖（包括开发依赖，构建时需要）
-RUN npm ci
+RUN pnpm config set store-dir .pnpm-store && \
+    pnpm install --frozen-lockfile
 
 # 复制前端源代码（排除 node_modules）
 COPY frontend/src ./src
@@ -17,7 +25,7 @@ COPY frontend/vite.config.ts ./
 COPY frontend/*.json ./
 
 # 构建前端应用
-RUN npm run build
+RUN pnpm run build
 
 # 阶段2: 准备后端环境
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/python:3.11-slim AS backend-base

@@ -2127,7 +2127,7 @@ class AnalysisTaskService:
         return statistics
 
     @staticmethod
-    def create_analysis_task(task_data: dict, db: Session = None) -> dict:
+    def create_analysis_task(task_data: dict,external_file_path: str, db: Session = None) -> dict:
         """
         创建新的分析任务
 
@@ -2138,6 +2138,9 @@ class AnalysisTaskService:
         Returns:
             dict: 包含创建结果的字典
         """
+        # 延迟导入避免循环依赖
+        import service.task_service as TaskService
+        
         if db is None:
             db = SessionLocal()
             should_close = True
@@ -2194,6 +2197,14 @@ class AnalysisTaskService:
             db.add(new_task)
             db.commit()
             db.refresh(new_task)
+            
+            # 创建同步包装函数来运行异步任务
+            def run_task_sync(task_id,external_file_path):
+                import asyncio
+                asyncio.run(TaskService.run_task(task_id,external_file_path,))
+            
+            import threading
+            threading.Thread(target=run_task_sync, args=(new_task.id,external_file_path), daemon=True).start()
 
             logger.info(f"成功创建分析任务: ID {new_task.id}, 仓库ID {new_task.repository_id}, 状态: {task_status}")
 
@@ -2571,6 +2582,57 @@ class AnalysisTaskService:
             return {
                 "status": "error",
                 "message": "获取队列状态时发生未知错误",
+                "error": str(e),
+            }
+        finally:
+            if should_close:
+                db.close()
+
+    @staticmethod
+    def get_task_by_id(task_id: int, db: Session = None) -> dict:
+        """
+        根据任务ID获取分析任务详细信息
+        
+        Args:
+            task_id: 分析任务ID
+            db: 数据库会话（可选）
+            
+        Returns:
+            dict: 包含任务详细信息的字典
+        """
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+            
+        try:
+            # 查询任务
+            task = db.query(AnalysisTask).filter(AnalysisTask.id == task_id).first()
+            
+            if not task:
+                return {
+                    "status": "error",
+                    "message": f"未找到ID为 {task_id} 的分析任务",
+                    "task_id": task_id,
+                }
+            
+            # 转换为字典格式
+            task_dict = task.to_dict()
+            
+            return {
+                "status": "success", 
+                "message": "获取任务信息成功",
+                "task": task_dict,
+                "task_id": task_id,
+            }
+            
+        except Exception as e:
+            logger.error(f"获取任务信息时发生错误: {str(e)}")
+            return {
+                "status": "error",
+                "message": "获取任务信息时发生未知错误",
+                "task_id": task_id,
                 "error": str(e),
             }
         finally:
