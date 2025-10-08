@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
 from config import settings
 import logging
+from contextlib import asynccontextmanager
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -33,6 +34,18 @@ Base = declarative_base()
 def get_db():
     """
     获取数据库会话
+    """
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@asynccontextmanager
+async def get_db_async():
+    """
+    异步获取数据库会话
     """
     db = SessionLocal()
     try:

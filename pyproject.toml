@@ -26,5 +26,5 @@ dependencies = [
 [tool.uv]
 # index-url = "http://mirrors.cloud.aliyuncs.com/pypi/simple/"
 # index-url = "https://mirrors.aliyuncs.com/pypi/simple/"
-# index-url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web"
-index-url = "https://mirrors.bfsu.edu.cn/pypi/web/simple"
+index-url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/"
+#index-url = "https://mirrors.bfsu.edu.cn/pypi/web/simple"

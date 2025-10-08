@@ -11,5 +11,6 @@ if __name__ == "__main__":
         host=settings.APP_HOST,
         port=settings.APP_PORT,
         reload=True,
-        log_level="info"
+        log_level="info",
+        reload_excludes=["data/**"]
     )

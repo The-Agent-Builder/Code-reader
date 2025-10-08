@@ -112,10 +112,12 @@ class WebVectorizeRepoNode(AsyncNode):
                         if result.get("status") == "success" and result.get("files"):
                             return self._convert_files_to_documents(result["files"])
                         else:
+                            print(result)
                             logger.error(f"API返回错误: {result.get('message', 'Unknown error')}")
                             return []
                     else:
                         error_text = await response.text()
+                        print(response)
                         logger.error(f"API请求失败: HTTP {response.status} - {error_text}")
                         return []
         except Exception as e:
@@ -134,7 +136,7 @@ class WebVectorizeRepoNode(AsyncNode):
 
                 # 根据文件类型确定类别
                 file_path = file_record.get("file_path", "")
-                doc_exts = [".md", ".mdx", ".rst", ".txt", ".adoc"]
+                doc_exts = [".md", ".mdx", ".rst", ".txt", ".adoc","py"]
                 file_extension = "." + file_path.split(".")[-1].lower() if "." in file_path else ""
                 category = "文档" if file_extension in doc_exts else "代码"
 

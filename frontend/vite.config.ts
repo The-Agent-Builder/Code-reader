@@ -60,6 +60,11 @@ export default defineConfig(({ mode }) => {
         "@": path.resolve(__dirname, "./src"),
       },
     },
+    define: {
+      'import.meta.env.VITE_README_API_BASE_URL': JSON.stringify(env.VITE_README_API_BASE_URL || env.README_API_BASE_URL || ""),
+      'import.meta.env.VITE_DEEPWIKI_UPLOAD_FILEPATH': JSON.stringify(env.VITE_DEEPWIKI_UPLOAD_FILEPATH || env.DEEPWIKI_UPLOAD_FILEPATH || ""),
+      'import.meta.env.VITE_API_BASE_URL': JSON.stringify(env.VITE_API_BASE_URL || env.API_BASE_URL || "http://localhost:8000"),
+    },
     build: {
       target: "esnext",
       outDir: "build",

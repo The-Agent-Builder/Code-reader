@@ -3,8 +3,8 @@
  */
 
 // 在 Docker 容器中，通过 Nginx 反向代理访问后端 API
-// 使用相对路径，避免跨域问题
-const API_BASE_URL = "";
+// 使用当前域名，避免跨域问题
+const API_BASE_URL = window.location.origin;
 
 // 类型定义
 export interface RepositoryInfo {
@@ -707,6 +707,11 @@ export class ApiService {
             filename: string;
             error: string;
         }>;
+        auto_compress_upload?: {
+            status: string;
+            message: string;
+            upload_data?: any;
+        };
     }> {
         const formData = new FormData();
 
@@ -742,6 +747,26 @@ export class ApiService {
 
         const result = await response.json();
         console.log(`Upload response:`, result);
+        return result;
+    }
+
+    async createTaskFromZip(zipFile: File): Promise<{
+        status: string;
+        message: string;
+        task_id: number;
+    }> {
+        const formData = new FormData();
+        formData.append('zip_file', zipFile);
+        
+        const response = await fetch(`${this.baseUrl}/api/v1/tasks/create-task-from-zip`, {
+            method: "POST",
+            body: formData,
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const result = await response.json();
+        console.log(`Create task from zip response:`, result);
         return result;
     }
 
@@ -1226,7 +1251,7 @@ export class ApiService {
                     headers: {
                         "Content-Type": "application/json",
                     },
-                    timeout: 30000, // 30秒超时
+                    timeout: 300000, // 30秒超时
                 }
             );
 
@@ -1342,7 +1367,7 @@ export class ApiService {
                     headers: {
                         "Content-Type": "application/json",
                     },
-                    timeout: 30000, // 30秒超时
+                    timeout: 300000, // 30秒超时
                 }
             );
 
@@ -1374,17 +1399,31 @@ export class ApiService {
         task_id?: string;
     }> {
         try {
-            // 从环境变量获取README_API_BASE_URL
+            // 从环境变量获取 README API Base URL（优先 VITE_README_API_BASE_URL，其次 README_API_BASE_URL），不再使用相对路径默认值，避免误指向前端 3000 端口
             const readmeApiBaseUrl =
-                import.meta.env.README_API_BASE_URL || "http://127.0.0.1:8001";
+                (import.meta.env.VITE_README_API_BASE_URL as string) ||
+                ((import.meta.env as any).README_API_BASE_URL as string) ||
+                "";
 
+            if (!readmeApiBaseUrl) {
+                console.error("README API Base URL 未配置，请在根目录 .env 设置 README_API_BASE_URL 或 frontend/.env 设置 VITE_README_API_BASE_URL");
+                return {
+                    status: "error",
+                    message: "README API Base URL 未配置",
+                };
+            }
+
+            // 修改localPath为 env中deepwiki_uoload_filepath/$localPath最后一级目录名$
+            const deepwikiUploadFilepath = import.meta.env.VITE_DEEPWIKI_UPLOAD_FILEPATH || "/app/data/uploads";
+            const lastDirName = localPath.split('/').filter(Boolean).pop() || "";
+            const modifiedLocalPath = deepwikiUploadFilepath ? `${deepwikiUploadFilepath}/${lastDirName}` : localPath;
             console.log(
-                `调用外部README API生成文档结构，本地路径: ${localPath}`
+                `调用外部README API生成文档结构，原始路径: ${localPath}, 修改后路径: ${modifiedLocalPath}`
             );
             console.log(`README API Base URL: ${readmeApiBaseUrl}`);
 
             const requestData = {
-                local_path: localPath,
+                local_path: modifiedLocalPath,
                 language: "zh",
                 provider: "openai",
                 model: "kimi-k2",
@@ -1393,6 +1432,7 @@ export class ApiService {
                 include_code_examples: true,
                 generate_architecture_diagram: true,
             };
+            
 
             const response = await fetch(
                 `${readmeApiBaseUrl}/api/analyze/local`,
@@ -1444,9 +1484,20 @@ export class ApiService {
         };
     }> {
         try {
-            // 从环境变量获取README_API_BASE_URL
+            // 从环境变量获取 README API Base URL（优先 VITE_README_API_BASE_URL，其次 README_API_BASE_URL），不再使用相对路径默认值，避免误指向前端 3000 端口
             const readmeApiBaseUrl =
-                import.meta.env.README_API_BASE_URL || "http://127.0.0.1:8001";
+                (import.meta.env.VITE_README_API_BASE_URL as string) ||
+                ((import.meta.env as any).README_API_BASE_URL as string) ||
+                "";
+
+            if (!readmeApiBaseUrl) {
+                console.error("README API Base URL 未配置，请在根目录 .env 设置 README_API_BASE_URL 或 frontend/.env 设置 VITE_README_API_BASE_URL");
+                return {
+                    status: "error",
+                    message: "README API Base URL 未配置",
+                };
+            }
+                
 
             console.log(`检查文档生成状态，任务ID: ${readmeApiTaskId}`);
 
@@ -1587,6 +1638,48 @@ export class ApiService {
             };
         }
     }
+
+    // 压缩并上传md5文件夹到README API
+    async compressAndUploadFolder(md5FolderName: string): Promise<{
+        status: string;
+        message: string;
+        md5_folder_name?: string;
+        upload_result?: any;
+        error?: string;
+    }> {
+        try {
+            console.log(`开始压缩并上传文件夹: ${md5FolderName}`);
+
+            const response = await fetch(
+                `${this.baseUrl}/api/repository/upload/compress-and-upload/${md5FolderName}`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                }
+            );
+
+            if (response.ok) {
+                const result = await response.json();
+                console.log(`压缩并上传成功:`, result);
+                return result;
+            } else {
+                const errorData = await response.json().catch(() => ({}));
+                console.error("压缩并上传失败:", errorData);
+                return {
+                    status: "error",
+                    message: errorData.message || `HTTP ${response.status}`,
+                };
+            }
+        } catch (error) {
+            console.error("压缩并上传时出错:", error);
+            return {
+                status: "error",
+                message: `压缩并上传时出错: ${error}`,
+            };
+        }
+    }
 }
 
 // 默认API服务实例
@@ -1645,7 +1738,8 @@ export const api = {
     // 上传相关
     uploadRepository: (files: FileList, repositoryName: string) =>
         apiService.uploadRepository(files, repositoryName),
-
+    createTaskFromZip: (zipFile: File) =>
+        apiService.createTaskFromZip(zipFile),
     // 分析任务相关
     createAnalysisTask: (taskData: {
         repository_id: number;
@@ -1668,8 +1762,6 @@ export const api = {
     createFileAnalysis: (
         fileData: Parameters<ApiService["createFileAnalysis"]>[0]
     ) => apiService.createFileAnalysis(fileData),
-    getAnalysisItemsByFileId: (fileAnalysisId: number) =>
-        apiService.getAnalysisItemsByFileId(fileAnalysisId),
     getFileAnalysisDetail: (fileId: number, taskId: number) =>
         apiService.getFileAnalysisDetail(fileId, taskId),
 
@@ -1712,6 +1804,10 @@ export const api = {
     // 仓库信息相关
     getRepositoryById: (repositoryId: number) =>
         apiService.getRepositoryById(repositoryId),
+
+    // 压缩并上传文件夹
+    compressAndUploadFolder: (md5FolderName: string) =>
+        apiService.compressAndUploadFolder(md5FolderName),
 };
 
 export default api;
