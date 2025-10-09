@@ -5,6 +5,7 @@ import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { api } from "../services/api";
 import { findFileInTree, FileNode, normalizePath } from "../utils/fileTree";
+import { MermaidBlock } from "./MermaidBlock";
 
 interface TaskStatistics {
   code_lines: number;
@@ -320,6 +321,11 @@ export function MainContent({
                   },
                   // 自定义代码块样式
                   code: ({ className, children, ...props }) => {
+                    const language = className?.replace("language-", "");
+                    if (language === "mermaid") {
+                      return <MermaidBlock chart={String(children)} />;
+                    }
+
                     const isInline = !className;
                     return (
                       <code
@@ -335,10 +341,18 @@ export function MainContent({
                     );
                   },
                   // 自定义预格式化代码块
-                  pre: ({ children, ...props }) => {
+                  pre: ({ children, className, ...props }) => {
+                    const child = Array.isArray(children) ? children[0] : children;
+                    const childClassName = (child as any)?.props?.className as string | undefined;
+
+                    if (childClassName?.includes("language-mermaid")) {
+                      const chart = (child as any)?.props?.children ?? [];
+                      return <MermaidBlock chart={String(chart)} />;
+                    }
+
                     return (
                       <pre
-                        className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto mb-4 text-sm font-mono"
+                        className={`bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto mb-4 text-sm font-mono ${className ?? ""}`.trim()}
                         {...props}
                       >
                         {children}
