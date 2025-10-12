@@ -668,24 +668,51 @@ async def execute_step_3_generate_document_structure(task_id: int, external_file
         }
         print(request_data)
         
-        async with httpx.AsyncClient(timeout=300.0) as client:
-            response = await client.post(
-                f"{readme_api_base_url}/api/analyze/local",
-                json=request_data
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                print(result)
-                readme_api_task_id = result.get("task_id")
-                logger.info(f"文档结构生成任务已创建，任务ID: {readme_api_task_id}")
-            else:
+        max_create_attempts = 50
+        retry_delay_seconds = 5
+        request_timeout = httpx.Timeout(600.0)
+        readme_api_task_id = None
+
+        async with httpx.AsyncClient(timeout=request_timeout) as client:
+            for attempt in range(1, max_create_attempts + 1):
+                try:
+                    response = await client.post(
+                        f"{readme_api_base_url}/api/analyze/local",
+                        json=request_data
+                    )
+                except httpx.RequestError as exc:
+                    logger.warning(
+                        f"文档结构生成任务创建请求失败(第 {attempt}/{max_create_attempts} 次尝试): {exc}"
+                    )
+                    if attempt < max_create_attempts:
+                        await asyncio.sleep(retry_delay_seconds)
+                    continue
+
+                if response.status_code == 200:
+                    result = response.json()
+                    print(result)
+                    readme_api_task_id = result.get("task_id")
+                    logger.info(f"文档结构生成任务已创建，任务ID: {readme_api_task_id}")
+                    break
+
                 error_data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
-                logger.error(f"文档结构生成任务创建失败: {error_data}")
-                return {
-                    "success": False,
-                    "message": f"文档结构生成任务创建失败: {error_data.get('message', response.text)}"
-                }
+                logger.error(
+                    f"文档结构生成任务创建失败(第 {attempt}/{max_create_attempts} 次尝试): {error_data}"
+                )
+                if attempt < max_create_attempts:
+                    logger.info(f"将在 {retry_delay_seconds} 秒后重试创建文档结构任务")
+                    await asyncio.sleep(retry_delay_seconds)
+                else:
+                    return {
+                        "success": False,
+                        "message": f"文档结构生成任务创建失败: {error_data.get('message', response.text)}"
+                    }
+
+        if not readme_api_task_id:
+            return {
+                "success": False,
+                "message": "文档结构生成任务创建失败: 请求在最大重试次数后仍未成功"
+            }
         
         # 2. 轮询检查生成状态
         logger.info("开始轮询检查文档生成状态...")
