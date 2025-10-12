@@ -1,10 +1,14 @@
+import { useState, useEffect, Children, isValidElement } from "react";
+import type { ReactNode } from "react";
 import React, { useState, useEffect, memo, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { api } from "../services/api";
 import { findFileInTree, FileNode, normalizePath } from "../utils/fileTree";
+import { MermaidBlock } from "./MermaidBlock";
 import MermaidDiagram from "./MermaidDiagram";
 import "./MermaidDiagram.css";
 
@@ -34,7 +38,50 @@ const generateSectionId = (title: string): string => {
     .replace(/^-+|-+$/g, ""); // 移除开头和结尾的连字符
 };
 
-const MainContent = memo(function MainContent({
+const getNodeText = (node: ReactNode): string => {
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node);
+  }
+
+  if (Array.isArray(node)) {
+    return node.map((child) => getNodeText(child)).join("");
+  }
+
+  if (isValidElement(node)) {
+    return getNodeText(node.props?.children);
+  }
+
+  return "";
+};
+
+const processHeadingChildren = (children: ReactNode) => {
+  const childArray = Children.toArray(children);
+  let customId: string | undefined;
+
+  const sanitizedChildren = childArray
+    .map((child) => {
+      if (typeof child === "string") {
+        const match = child.match(/^(.*?)(?:\s*\{#([A-Za-z0-9_-]+)\})\s*$/);
+        if (match) {
+          customId = match[2];
+          const textPart = match[1]?.trimEnd();
+          return textPart ? textPart : null;
+        }
+      }
+      return child;
+    })
+    .filter((child) => child !== null && child !== undefined) as ReactNode[];
+
+  const textContent = sanitizedChildren.map((child) => getNodeText(child)).join("").trim();
+
+  return {
+    sanitizedChildren,
+    textContent,
+    customId,
+  };
+};
+
+export function MainContent({
   activeSection,
   onSectionChange,
   onFileSelect,
@@ -413,7 +460,224 @@ const MainContent = memo(function MainContent({
             <div className="markdown-content max-w-none">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
-                components={markdownComponents}
+                rehypePlugins={[rehypeRaw]}
+                components={{
+                  details: ({ children, ...props }) => (
+                    <details
+                      className="border border-gray-200 rounded-md p-3 bg-white shadow-sm open:shadow transition-shadow"
+                      {...props}
+                    >
+                      {children}
+                    </details>
+                  ),
+                  summary: ({ children, ...props }) => (
+                    <summary
+                      className="cursor-pointer font-medium text-gray-800 mb-2"
+                      {...props}
+                    >
+                      {children}
+                    </summary>
+                  ),
+                  // 自定义标题样式，添加ID用于导航定位
+                  h1: ({ children, ...props }) => {
+                    const { sanitizedChildren, textContent, customId } =
+                      processHeadingChildren(children);
+                    const id = customId || generateSectionId(textContent);
+                    return (
+                      <h1
+                        id={id}
+                        className="text-3xl font-bold text-gray-900 mb-6 border-b border-gray-200 pb-3 scroll-mt-4"
+                        {...props}
+                      >
+                        {sanitizedChildren}
+                      </h1>
+                    );
+                  },
+                  h2: ({ children, ...props }) => {
+                    const { sanitizedChildren, textContent, customId } =
+                      processHeadingChildren(children);
+                    const id = customId || generateSectionId(textContent);
+                    return (
+                      <h2
+                        id={id}
+                        className="text-2xl font-semibold text-gray-800 mb-4 mt-8 scroll-mt-4"
+                        {...props}
+                      >
+                        {sanitizedChildren}
+                      </h2>
+                    );
+                  },
+                  h3: ({ children, ...props }) => (
+                    <h3
+                      className="text-xl font-medium text-gray-700 mb-3 mt-6"
+                      {...props}
+                    >
+                      {children}
+                    </h3>
+                  ),
+                  // 自定义段落样式
+                  p: ({ children, ...props }) => (
+                    <p
+                      className="text-gray-700 leading-relaxed mb-4"
+                      {...props}
+                    >
+                      {children}
+                    </p>
+                  ),
+                  // 自定义列表样式
+                  ul: ({ children, ...props }) => (
+                    <ul
+                      className="list-disc list-inside mb-4 space-y-2 text-gray-700"
+                      {...props}
+                    >
+                      {children}
+                    </ul>
+                  ),
+                  ol: ({ children, ...props }) => (
+                    <ol
+                      className="list-decimal list-inside mb-4 space-y-2 text-gray-700"
+                      {...props}
+                    >
+                      {children}
+                    </ol>
+                  ),
+                  li: ({ children, ...props }) => (
+                    <li className="ml-4" {...props}>
+                      {children}
+                    </li>
+                  ),
+                  // 自定义链接渲染，处理文件链接
+                  a: ({ href, children, ...props }) => {
+                    // 如果没有href，渲染为普通文本
+                    if (!href) {
+                      return <span {...props}>{children}</span>;
+                    }
+
+                    if (href.startsWith("#")) {
+                      const sectionId = href.replace(/^#/, "");
+                      return (
+                        <a
+                          href={href}
+                          className="text-blue-600 hover:text-blue-800 underline font-medium transition-colors"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            if (sectionId) {
+                              scrollToSection(sectionId);
+                              onSectionChange(sectionId);
+                            }
+                          }}
+                          {...props}
+                        >
+                          {children}
+                        </a>
+                      );
+                    }
+
+                    // 标准化文件路径：URL解码 + 路径分隔符标准化
+                    const normalizedHref = normalizePath(href);
+
+                    // 检查文件是否存在于文件树中
+                    const fileExists = findFileInTree(fileTree, normalizedHref);
+
+                    if (fileExists) {
+                      // 文件存在，渲染为可点击的链接
+                      return (
+                        <button
+                          className="text-blue-600 hover:text-blue-800 underline font-medium transition-colors"
+                          onClick={() => onFileHighlight(normalizedHref)}
+                          title={`定位到文件: ${normalizedHref}`}
+                          {...props}
+                        >
+                          {children}
+                        </button>
+                      );
+                    } else {
+                      // 文件不存在，渲染为普通文本（不同字体样式）
+                      return (
+                        <span
+                          className="text-gray-500 font-mono text-sm bg-gray-100 px-1 py-0.5 rounded"
+                          title={`文件不存在: ${normalizedHref}`}
+                          {...props}
+                        >
+                          {children}
+                        </span>
+                      );
+                    }
+                  },
+                  // 自定义代码块样式
+                  code: ({ className, children, ...props }) => {
+                    const language = className?.replace("language-", "");
+                    if (language === "mermaid") {
+                      return <MermaidBlock chart={String(children)} />;
+                    }
+
+                    const isInline = !className;
+                    return (
+                      <code
+                        className={`${className} ${
+                          isInline
+                            ? "bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono text-gray-800"
+                            : ""
+                        }`}
+                        {...props}
+                      >
+                        {children}
+                      </code>
+                    );
+                  },
+                  // 自定义预格式化代码块
+                  pre: ({ children, className, ...props }) => {
+                    const child = Array.isArray(children) ? children[0] : children;
+                    const childClassName = (child as any)?.props?.className as string | undefined;
+
+                    if (childClassName?.includes("language-mermaid")) {
+                      const chart = (child as any)?.props?.children ?? [];
+                      return <MermaidBlock chart={String(chart)} />;
+                    }
+
+                    return (
+                      <pre
+                        className={`bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto mb-4 text-sm font-mono ${className ?? ""}`.trim()}
+                        {...props}
+                      >
+                        {children}
+                      </pre>
+                    );
+                  },
+                  // 自定义引用块
+                  blockquote: ({ children, ...props }) => (
+                    <blockquote
+                      className="border-l-4 border-blue-500 pl-4 py-2 mb-4 bg-blue-50 text-gray-700 italic"
+                      {...props}
+                    >
+                      {children}
+                    </blockquote>
+                  ),
+                  // 自定义表格
+                  table: ({ children, ...props }) => (
+                    <div className="overflow-x-auto mb-4">
+                      <table
+                        className="min-w-full border border-gray-300"
+                        {...props}
+                      >
+                        {children}
+                      </table>
+                    </div>
+                  ),
+                  th: ({ children, ...props }) => (
+                    <th
+                      className="border border-gray-300 px-4 py-2 bg-gray-100 font-semibold text-left"
+                      {...props}
+                    >
+                      {children}
+                    </th>
+                  ),
+                  td: ({ children, ...props }) => (
+                    <td className="border border-gray-300 px-4 py-2" {...props}>
+                      {children}
+                    </td>
+                  ),
+                }}
               >
                 {markdownContent}
               </ReactMarkdown>
