@@ -1,6 +1,12 @@
-import { useState, useEffect, Children, isValidElement } from "react";
+import React, {
+  useState,
+  useEffect,
+  Children,
+  isValidElement,
+  memo,
+  useMemo,
+} from "react";
 import type { ReactNode } from "react";
-import React, { useState, useEffect, memo, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
@@ -1240,6 +1246,4 @@ export function MainContent({
   };
 
   return <div className="p-8 max-w-none">{renderContent()}</div>;
-});
-
-export { MainContent };
+}

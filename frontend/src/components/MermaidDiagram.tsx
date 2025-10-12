@@ -1,5 +1,4 @@
-import React, { useEffect, useState, memo } from 'react';
-import { useInView } from 'react-intersection-observer';
+import React, { useEffect, useState, memo, useCallback, useRef } from 'react';
 
 interface MermaidDiagramProps {
   chart: string;
@@ -78,13 +77,51 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = memo(({ chart, className =
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [renderedChart, setRenderedChart] = useState<string>('');
+  const [inView, setInView] = useState(false);
+
+  const observerRef = useRef<IntersectionObserver | null>(null);
+
+  const inViewRef = useCallback((node: HTMLDivElement | null) => {
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
+
+    if (!node) {
+      setInView(false);
+      return;
+    }
+
+    if (typeof window === 'undefined' || typeof IntersectionObserver === 'undefined') {
+      setInView(true);
+      return;
+    }
+
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]) {
+          setInView(entries[0].isIntersecting);
+        }
+      },
+      {
+        threshold: 0,
+        rootMargin: '50px',
+      }
+    );
+
+    observerRef.current.observe(node);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+        observerRef.current = null;
+      }
+    };
+  }, []);
 
   // 使用 Intersection Observer 实现懒加载，优化性能
-  const { ref: inViewRef, inView } = useInView({
-    threshold: 0,
-    rootMargin: '50px', // 提前 50px 开始加载
-    triggerOnce: false,
-  });
 
   // 检查是否已经渲染过相同的图表
   const hasRendered = renderedChart === chart && svgContent;
