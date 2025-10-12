@@ -1,6 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Children, isValidElement } from "react";
+import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { api } from "../services/api";
@@ -31,6 +33,49 @@ const generateSectionId = (title: string): string => {
     .replace(/[^a-z0-9\u4e00-\u9fa5\s]/g, "")
     .replace(/\s+/g, "-")
     .replace(/^-+|-+$/g, ""); // 移除开头和结尾的连字符
+};
+
+const getNodeText = (node: ReactNode): string => {
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node);
+  }
+
+  if (Array.isArray(node)) {
+    return node.map((child) => getNodeText(child)).join("");
+  }
+
+  if (isValidElement(node)) {
+    return getNodeText(node.props?.children);
+  }
+
+  return "";
+};
+
+const processHeadingChildren = (children: ReactNode) => {
+  const childArray = Children.toArray(children);
+  let customId: string | undefined;
+
+  const sanitizedChildren = childArray
+    .map((child) => {
+      if (typeof child === "string") {
+        const match = child.match(/^(.*?)(?:\s*\{#([A-Za-z0-9_-]+)\})\s*$/);
+        if (match) {
+          customId = match[2];
+          const textPart = match[1]?.trimEnd();
+          return textPart ? textPart : null;
+        }
+      }
+      return child;
+    })
+    .filter((child) => child !== null && child !== undefined) as ReactNode[];
+
+  const textContent = sanitizedChildren.map((child) => getNodeText(child)).join("").trim();
+
+  return {
+    sanitizedChildren,
+    textContent,
+    customId,
+  };
 };
 
 export function MainContent({
@@ -214,31 +259,50 @@ export function MainContent({
             <div className="markdown-content max-w-none">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeRaw]}
                 components={{
+                  details: ({ children, ...props }) => (
+                    <details
+                      className="border border-gray-200 rounded-md p-3 bg-white shadow-sm open:shadow transition-shadow"
+                      {...props}
+                    >
+                      {children}
+                    </details>
+                  ),
+                  summary: ({ children, ...props }) => (
+                    <summary
+                      className="cursor-pointer font-medium text-gray-800 mb-2"
+                      {...props}
+                    >
+                      {children}
+                    </summary>
+                  ),
                   // 自定义标题样式，添加ID用于导航定位
                   h1: ({ children, ...props }) => {
-                    const text = children?.toString() || "";
-                    const id = generateSectionId(text);
+                    const { sanitizedChildren, textContent, customId } =
+                      processHeadingChildren(children);
+                    const id = customId || generateSectionId(textContent);
                     return (
                       <h1
                         id={id}
                         className="text-3xl font-bold text-gray-900 mb-6 border-b border-gray-200 pb-3 scroll-mt-4"
                         {...props}
                       >
-                        {children}
+                        {sanitizedChildren}
                       </h1>
                     );
                   },
                   h2: ({ children, ...props }) => {
-                    const text = children?.toString() || "";
-                    const id = generateSectionId(text);
+                    const { sanitizedChildren, textContent, customId } =
+                      processHeadingChildren(children);
+                    const id = customId || generateSectionId(textContent);
                     return (
                       <h2
                         id={id}
                         className="text-2xl font-semibold text-gray-800 mb-4 mt-8 scroll-mt-4"
                         {...props}
                       >
-                        {children}
+                        {sanitizedChildren}
                       </h2>
                     );
                   },
@@ -286,6 +350,26 @@ export function MainContent({
                     // 如果没有href，渲染为普通文本
                     if (!href) {
                       return <span {...props}>{children}</span>;
+                    }
+
+                    if (href.startsWith("#")) {
+                      const sectionId = href.replace(/^#/, "");
+                      return (
+                        <a
+                          href={href}
+                          className="text-blue-600 hover:text-blue-800 underline font-medium transition-colors"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            if (sectionId) {
+                              scrollToSection(sectionId);
+                              onSectionChange(sectionId);
+                            }
+                          }}
+                          {...props}
+                        >
+                          {children}
+                        </a>
+                      );
                     }
 
                     // 标准化文件路径：URL解码 + 路径分隔符标准化
