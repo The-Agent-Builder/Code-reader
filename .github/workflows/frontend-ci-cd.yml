@@ -23,7 +23,7 @@ jobs:
 
   build-and-test:
     runs-on: ubuntu-latest
-    if: ${{ !inputs.skip_tests && (inputs.deploy_frontend == true || github.event_name != 'workflow_dispatch') }}
+    if: ${{ !inputs.skip_tests }}
 
     steps:
     - name: Checkout代码
