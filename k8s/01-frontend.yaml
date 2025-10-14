@@ -67,9 +67,9 @@ spec:
   - name: http
     port: 80
     targetPort: 80
-    nodePort: 30080
     protocol: TCP
   type: NodePort
+  # nodePort 使用随机分配，避免端口冲突
 ---
 # 测试环境前端 Deployment
 apiVersion: apps/v1
@@ -144,6 +144,6 @@ spec:
   - name: http
     port: 80
     targetPort: 80
-    nodePort: 30081
     protocol: TCP
   type: NodePort
+  # nodePort 使用随机分配，避免端口冲突
