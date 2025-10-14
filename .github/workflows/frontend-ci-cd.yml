@@ -237,16 +237,16 @@ jobs:
         # 备份原始文件
         cp k8s/01-frontend.yaml k8s/01-frontend.yaml.bak
         
-        # 只更新生产环境的镜像
+        # 只更新生产环境的镜像（第一个匹配）
         sed -i "0,/image:.*code-reader-frontend.*/s||image: $IMAGE_TAG|" k8s/01-frontend.yaml
         
-        # 应用前端配置
-        kubectl apply -f k8s/01-frontend.yaml
+        # 只应用生产环境的 Deployment 和 Service（使用 label selector）
+        kubectl apply -f k8s/01-frontend.yaml -l environment!=test
         
         # 恢复原始文件
         mv k8s/01-frontend.yaml.bak k8s/01-frontend.yaml
         
-        echo "Frontend deployment updated with image: $IMAGE_TAG"
+        echo "Production frontend deployment updated with image: $IMAGE_TAG"
 
     - name: Verify deployment
       env:
@@ -330,8 +330,8 @@ jobs:
         # 只更新测试环境的镜像（第二个匹配）
         sed -i "0,/image:.*code-reader-frontend.*/! {0,/image:.*code-reader-frontend.*/s||image: $IMAGE_TAG|}" k8s/01-frontend.yaml
         
-        # 应用前端配置
-        kubectl apply -f k8s/01-frontend.yaml
+        # 只应用测试环境的 Deployment 和 Service（使用 label selector）
+        kubectl apply -f k8s/01-frontend.yaml -l environment=test
         
         # 恢复原始文件
         mv k8s/01-frontend.yaml.bak k8s/01-frontend.yaml

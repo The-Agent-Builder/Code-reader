@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
       - name: code-reader-frontend
-        image: ghcr.io/your-username/code-reader-frontend:latest
+        image: ghcr.io/the-agent-builder/code-reader-frontend:latest
         ports:
         - containerPort: 80
           name: http
@@ -104,7 +104,7 @@ spec:
     spec:
       containers:
       - name: code-reader-frontend-test
-        image: ghcr.io/your-username/code-reader-frontend:test-latest
+        image: ghcr.io/the-agent-builder/code-reader-frontend:test-latest
         ports:
         - containerPort: 80
           name: http
