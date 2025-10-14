@@ -85,7 +85,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: code-reader-frontend-test
-  namespace: code-reader-test
+  namespace: code-reader
   labels:
     app: code-reader-frontend-test
     component: frontend
@@ -142,15 +142,15 @@ spec:
       volumes:
       - name: nginx-config
         configMap:
-          name: code-reader-frontend-test-nginx-config
+          name: code-reader-frontend-nginx-config-test
       restartPolicy: Always
 ---
 # 测试环境前端 Service
 apiVersion: v1
 kind: Service
 metadata:
-  name: code-reader-frontend-test-service
-  namespace: code-reader-test
+  name: code-reader-frontend-service-test
+  namespace: code-reader
   labels:
     app: code-reader-frontend-test
     component: frontend

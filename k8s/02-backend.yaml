@@ -95,7 +95,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: code-reader-backend-test
-  namespace: code-reader-test
+  namespace: code-reader
   labels:
     app: code-reader-backend-test
     component: backend
@@ -159,7 +159,7 @@ spec:
           claimName: code-reader-test-logs-pvc
       - name: env-config
         configMap:
-          name: code-reader-backend-test-config
+          name: code-reader-backend-config-test
           items:
           - key: .env
             path: .env
@@ -169,8 +169,8 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: code-reader-backend-test-service
-  namespace: code-reader-test
+  name: code-reader-backend-service-test
+  namespace: code-reader
   labels:
     app: code-reader-backend-test
     component: backend

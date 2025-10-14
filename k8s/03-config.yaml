@@ -38,10 +38,10 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: code-reader-frontend-test-nginx-config
-  namespace: code-reader-test
+  name: code-reader-frontend-nginx-config-test
+  namespace: code-reader
   labels:
-    app: code-reader-test
+    app: code-reader
     component: frontend-nginx-config
     environment: test
 data:
@@ -59,7 +59,7 @@ data:
         
         # API 反向代理到后端服务
         location /api/ {
-            proxy_pass http://code-reader-backend-test-service:8000/;
+            proxy_pass http://code-reader-backend-service-test:8000/;
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection 'upgrade';
@@ -121,10 +121,10 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: code-reader-backend-test-config
-  namespace: code-reader-test
+  name: code-reader-backend-config-test
+  namespace: code-reader
   labels:
-    app: code-reader-test
+    app: code-reader
     component: backend-config
     environment: test
 data:

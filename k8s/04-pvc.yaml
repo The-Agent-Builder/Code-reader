@@ -57,7 +57,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: code-reader-test-data-pvc
-  namespace: code-reader-test
+  namespace: code-reader
   labels:
     app: code-reader-test
     component: storage
@@ -76,7 +76,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: code-reader-test-logs-pvc
-  namespace: code-reader-test
+  namespace: code-reader
   labels:
     app: code-reader-test
     component: storage
@@ -95,7 +95,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: code-reader-test-cache-pvc
-  namespace: code-reader-test
+  namespace: code-reader
   labels:
     app: code-reader-test
     component: storage

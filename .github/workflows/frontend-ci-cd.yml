@@ -290,7 +290,7 @@ jobs:
         # 配置 kubectl
         kubectl config set-cluster k8s-cluster --server="$K8S_API_URL" --insecure-skip-tls-verify=true
         kubectl config set-credentials github-actions --token="$K8S_TOKEN"
-        kubectl config set-context default --cluster=k8s-cluster --user=github-actions --namespace=code-reader-test
+        kubectl config set-context default --cluster=k8s-cluster --user=github-actions --namespace=code-reader
         kubectl config use-context default
         
         # 验证连接
