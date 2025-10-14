@@ -83,23 +83,37 @@ metadata:
 data:
   .env: |
     # Code Reader 后端生产环境配置
+    
     # GitHub 配置
     GITHUB_TOKEN=
     
-    # OpenAI 配置
+    # OpenAI/LLM 配置
     OPENAI_API_KEY=
     OPENAI_BASE_URL=
-    OPENAI_MODEL=
+    OPENAI_MODEL=gpt-3.5-turbo
     
     # RAG 配置
     RAG_BASE_URL=
+    RAG_BATCH_SIZE=100
+    
+    # README API 配置（外部文档生成服务）
+    README_API_BASE_URL=
     
     # 数据库配置
-    MYSQL_HOST=
-    MYSQL_PORT=3306
-    MYSQL_USER=
-    MYSQL_PASSWORD=
-    MYSQL_DATABASE=
+    DB_HOST=
+    DB_PORT=3306
+    DB_NAME=code_analysis
+    DB_USER=
+    DB_PASSWORD=
+    
+    # 应用配置
+    APP_HOST=0.0.0.0
+    APP_PORT=8000
+    
+    # 存储路径
+    LOCAL_REPO_PATH=/app/data/repos
+    RESULTS_PATH=/app/data/results
+    VECTORSTORE_PATH=/app/data/vectorstores
 ---
 # 测试环境后端 ConfigMap
 apiVersion: v1
@@ -114,20 +128,34 @@ metadata:
 data:
   .env: |
     # Code Reader 后端测试环境配置
+    
     # GitHub 配置
     GITHUB_TOKEN=
     
-    # OpenAI 配置
+    # OpenAI/LLM 配置
     OPENAI_API_KEY=
     OPENAI_BASE_URL=
-    OPENAI_MODEL=
+    OPENAI_MODEL=gpt-3.5-turbo
     
     # RAG 配置
     RAG_BASE_URL=
+    RAG_BATCH_SIZE=100
+    
+    # README API 配置（外部文档生成服务）
+    README_API_BASE_URL=
     
     # 数据库配置
-    MYSQL_HOST=
-    MYSQL_PORT=3306
-    MYSQL_USER=
-    MYSQL_PASSWORD=
-    MYSQL_DATABASE=
+    DB_HOST=
+    DB_PORT=3306
+    DB_NAME=code_analysis_test
+    DB_USER=
+    DB_PASSWORD=
+    
+    # 应用配置
+    APP_HOST=0.0.0.0
+    APP_PORT=8000
+    
+    # 存储路径
+    LOCAL_REPO_PATH=/app/data/repos
+    RESULTS_PATH=/app/data/results
+    VECTORSTORE_PATH=/app/data/vectorstores
