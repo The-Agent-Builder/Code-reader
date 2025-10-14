@@ -18,6 +18,8 @@ spec:
         app: code-reader-frontend
         component: frontend
     spec:
+      imagePullSecrets:
+      - name: ghcr-secret
       containers:
       - name: code-reader-frontend
         image: ghcr.io/the-agent-builder/code-reader-frontend:latest
@@ -102,6 +104,8 @@ spec:
         component: frontend
         environment: test
     spec:
+      imagePullSecrets:
+      - name: ghcr-secret
       containers:
       - name: code-reader-frontend-test
         image: ghcr.io/the-agent-builder/code-reader-frontend:test-latest

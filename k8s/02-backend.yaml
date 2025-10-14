@@ -18,6 +18,8 @@ spec:
         app: code-reader-backend
         component: backend
     spec:
+      imagePullSecrets:
+      - name: ghcr-secret
       containers:
       - name: code-reader-backend
         image: ghcr.io/the-agent-builder/code-reader-backend:latest
@@ -112,6 +114,8 @@ spec:
         component: backend
         environment: test
     spec:
+      imagePullSecrets:
+      - name: ghcr-secret
       containers:
       - name: code-reader-backend-test
         image: ghcr.io/the-agent-builder/code-reader-backend:test-latest
@@ -153,10 +157,10 @@ spec:
       volumes:
       - name: test-data-volume
         persistentVolumeClaim:
-          claimName: code-reader-test-data-pvc
+          claimName: code-reader-data-pvc-test
       - name: test-logs-volume
         persistentVolumeClaim:
-          claimName: code-reader-test-logs-pvc
+          claimName: code-reader-logs-pvc-test
       - name: env-config
         configMap:
           name: code-reader-backend-config-test
