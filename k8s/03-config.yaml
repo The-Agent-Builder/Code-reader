@@ -101,22 +101,6 @@ data:
     MYSQL_PASSWORD=
     MYSQL_DATABASE=
 ---
-# 测试环境前端 ConfigMap
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: code-reader-frontend-test-config
-  namespace: code-reader-test
-  labels:
-    app: code-reader-test
-    component: frontend-config
-    environment: test
-data:
-  .env: |
-    # Code Reader 前端测试环境配置
-    VITE_API_BASE_URL=http://localhost:8000
-    VITE_APP_NAME=Code Reader (Test)
----
 # 测试环境后端 ConfigMap
 apiVersion: v1
 kind: ConfigMap
