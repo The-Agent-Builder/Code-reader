@@ -33,6 +33,11 @@ class Config:
 
     def _validate_required_vars(self):
         """验证必需的环境变量"""
+        # 在 CI/CD 构建环境中跳过验证
+        if os.getenv("CI") == "true" or os.getenv("GITHUB_ACTIONS") == "true":
+            logger.info("Running in CI/CD environment, skipping environment variable validation")
+            return
+            
         required_vars = ["GITHUB_TOKEN", "OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_MODEL", "RAG_BASE_URL"]
 
         missing_vars = []
