@@ -326,8 +326,8 @@ jobs:
         # 应用基础配置
         kubectl apply -f k8s/00-namespace.yaml
         
-        # 仅在 ConfigMap 不存在时创建（不覆盖已有配置）
-        kubectl get configmap code-reader-backend-test-config -n code-reader-test >/dev/null 2>&1 || kubectl apply -f k8s/03-config.yaml
+        # 应用 ConfigMap（Nginx 配置和后端配置）
+        kubectl apply -f k8s/03-config.yaml
         
         kubectl apply -f k8s/04-pvc.yaml
         kubectl apply -f k8s/05-rbac.yaml
@@ -354,11 +354,11 @@ jobs:
       run: |
         # 等待测试部署完成
         echo "Waiting for test backend deployment to complete..."
-        kubectl rollout status deployment/code-reader-backend-test -n code-reader-test --timeout=5m
+        kubectl rollout status deployment/code-reader-backend-test -n code-reader --timeout=5m
         
         # 显示部署状态
-        kubectl get pods -n code-reader-test -l app=code-reader-backend-test
-        kubectl get services -n code-reader-test -l app=code-reader-backend-test
+        kubectl get pods -n code-reader -l app=code-reader-backend-test
+        kubectl get services -n code-reader -l app=code-reader-backend-test
 
     - name: 后端测试部署成功通知
       run: |
@@ -366,5 +366,5 @@ jobs:
         echo "🧪 后端测试环境部署成功!"
         echo "分支: $BRANCH_NAME"
         echo "镜像: ${{ needs.docker-build-push.outputs.full-image-name }}"
-        echo "命名空间: code-reader-test"
+        echo "命名空间: code-reader"
         echo "Deployment: code-reader-backend-test"

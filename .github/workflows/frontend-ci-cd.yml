@@ -342,11 +342,11 @@ jobs:
       run: |
         # 等待测试部署完成
         echo "Waiting for test frontend deployment to complete..."
-        kubectl rollout status deployment/code-reader-frontend-test -n code-reader-test --timeout=5m
+        kubectl rollout status deployment/code-reader-frontend-test -n code-reader --timeout=5m
         
         # 显示部署状态
-        kubectl get pods -n code-reader-test -l app=code-reader-frontend-test
-        kubectl get services -n code-reader-test -l app=code-reader-frontend-test
+        kubectl get pods -n code-reader -l app=code-reader-frontend-test
+        kubectl get services -n code-reader -l app=code-reader-frontend-test
 
     - name: 前端测试部署成功通知
       run: |
@@ -354,5 +354,5 @@ jobs:
         echo "🧪 前端测试环境部署成功!"
         echo "分支: $BRANCH_NAME"
         echo "镜像: ${{ needs.docker-build-push.outputs.full-image-name }}"
-        echo "命名空间: code-reader-test"
+        echo "命名空间: code-reader"
         echo "Deployment: code-reader-frontend-test"
