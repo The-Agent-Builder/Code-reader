@@ -1,24 +1,149 @@
-# 生产环境 ConfigMap
+# 前端 Nginx 配置
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: code-reader-config
+  name: code-reader-frontend-nginx-config
   namespace: code-reader
   labels:
     app: code-reader
-    component: config
+    component: frontend-nginx-config
 data:
-  env: ""
+  default.conf: |
+    server {
+        listen 80;
+        server_name localhost;
+        
+        # 前端静态文件
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+            try_files $uri $uri/ /index.html;
+        }
+        
+        # API 反向代理到后端服务
+        location /api/ {
+            proxy_pass http://code-reader-backend-service:8000/;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection 'upgrade';
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_cache_bypass $http_upgrade;
+        }
+    }
 ---
-# 测试环境 ConfigMap
+# 测试环境前端 Nginx 配置
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: code-reader-test-config
+  name: code-reader-frontend-test-nginx-config
   namespace: code-reader-test
   labels:
     app: code-reader-test
-    component: config
+    component: frontend-nginx-config
     environment: test
 data:
-  env: ""
+  default.conf: |
+    server {
+        listen 80;
+        server_name localhost;
+        
+        # 前端静态文件
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+            try_files $uri $uri/ /index.html;
+        }
+        
+        # API 反向代理到后端服务
+        location /api/ {
+            proxy_pass http://code-reader-backend-test-service:8000/;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection 'upgrade';
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_cache_bypass $http_upgrade;
+        }
+    }
+---
+# 生产环境后端 ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: code-reader-backend-config
+  namespace: code-reader
+  labels:
+    app: code-reader
+    component: backend-config
+data:
+  .env: |
+    # Code Reader 后端生产环境配置
+    # GitHub 配置
+    GITHUB_TOKEN=
+    
+    # OpenAI 配置
+    OPENAI_API_KEY=
+    OPENAI_BASE_URL=
+    OPENAI_MODEL=
+    
+    # RAG 配置
+    RAG_BASE_URL=
+    
+    # 数据库配置
+    MYSQL_HOST=
+    MYSQL_PORT=3306
+    MYSQL_USER=
+    MYSQL_PASSWORD=
+    MYSQL_DATABASE=
+---
+# 测试环境前端 ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: code-reader-frontend-test-config
+  namespace: code-reader-test
+  labels:
+    app: code-reader-test
+    component: frontend-config
+    environment: test
+data:
+  .env: |
+    # Code Reader 前端测试环境配置
+    VITE_API_BASE_URL=http://localhost:8000
+    VITE_APP_NAME=Code Reader (Test)
+---
+# 测试环境后端 ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: code-reader-backend-test-config
+  namespace: code-reader-test
+  labels:
+    app: code-reader-test
+    component: backend-config
+    environment: test
+data:
+  .env: |
+    # Code Reader 后端测试环境配置
+    # GitHub 配置
+    GITHUB_TOKEN=
+    
+    # OpenAI 配置
+    OPENAI_API_KEY=
+    OPENAI_BASE_URL=
+    OPENAI_MODEL=
+    
+    # RAG 配置
+    RAG_BASE_URL=
+    
+    # 数据库配置
+    MYSQL_HOST=
+    MYSQL_PORT=3306
+    MYSQL_USER=
+    MYSQL_PASSWORD=
+    MYSQL_DATABASE=

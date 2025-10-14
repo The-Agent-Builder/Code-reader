@@ -235,7 +235,7 @@ jobs:
         kubectl apply -f k8s/00-namespace.yaml
         
         # 仅在 ConfigMap 不存在时创建（不覆盖已有配置）
-        kubectl get configmap code-reader-config -n code-reader >/dev/null 2>&1 || kubectl apply -f k8s/03-config.yaml
+        kubectl get configmap code-reader-backend-config -n code-reader >/dev/null 2>&1 || kubectl apply -f k8s/03-config.yaml
         
         kubectl apply -f k8s/04-pvc.yaml
         kubectl apply -f k8s/05-rbac.yaml
@@ -327,7 +327,7 @@ jobs:
         kubectl apply -f k8s/00-namespace.yaml
         
         # 仅在 ConfigMap 不存在时创建（不覆盖已有配置）
-        kubectl get configmap code-reader-test-config -n code-reader-test >/dev/null 2>&1 || kubectl apply -f k8s/03-config.yaml
+        kubectl get configmap code-reader-backend-test-config -n code-reader-test >/dev/null 2>&1 || kubectl apply -f k8s/03-config.yaml
         
         kubectl apply -f k8s/04-pvc.yaml
         kubectl apply -f k8s/05-rbac.yaml

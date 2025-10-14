@@ -24,9 +24,6 @@ spec:
         ports:
         - containerPort: 8000
           name: http
-        envFrom:
-        - configMapRef:
-            name: code-reader-config
         resources:
           requests:
             memory: "256Mi"
@@ -55,6 +52,10 @@ spec:
           mountPath: /app/data
         - name: logs-volume
           mountPath: /app/logs
+        - name: env-config
+          mountPath: /app/.env
+          subPath: .env
+          readOnly: true
       volumes:
       - name: data-volume
         persistentVolumeClaim:
@@ -62,6 +63,12 @@ spec:
       - name: logs-volume
         persistentVolumeClaim:
           claimName: code-reader-logs-pvc
+      - name: env-config
+        configMap:
+          name: code-reader-backend-config
+          items:
+          - key: .env
+            path: .env
       restartPolicy: Always
 ---
 apiVersion: v1
@@ -111,9 +118,6 @@ spec:
         ports:
         - containerPort: 8000
           name: http
-        envFrom:
-        - configMapRef:
-            name: code-reader-test-config
         resources:
           requests:
             memory: "512Mi"
@@ -142,6 +146,10 @@ spec:
           mountPath: /app/data
         - name: test-logs-volume
           mountPath: /app/logs
+        - name: env-config
+          mountPath: /app/.env
+          subPath: .env
+          readOnly: true
       volumes:
       - name: test-data-volume
         persistentVolumeClaim:
@@ -149,6 +157,12 @@ spec:
       - name: test-logs-volume
         persistentVolumeClaim:
           claimName: code-reader-test-logs-pvc
+      - name: env-config
+        configMap:
+          name: code-reader-backend-test-config
+          items:
+          - key: .env
+            path: .env
       restartPolicy: Always
 ---
 # 测试环境后端 Service
