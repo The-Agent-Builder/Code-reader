@@ -1,0 +1,149 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: code-reader-frontend
+  namespace: code-reader
+  labels:
+    app: code-reader-frontend
+    component: frontend
+    version: v1.0.0
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: code-reader-frontend
+  template:
+    metadata:
+      labels:
+        app: code-reader-frontend
+        component: frontend
+    spec:
+      containers:
+      - name: code-reader-frontend
+        image: ghcr.io/your-username/code-reader-frontend:latest
+        ports:
+        - containerPort: 80
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        env:
+        - name: NODE_ENV
+          value: "production"
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: code-reader-frontend-service
+  namespace: code-reader
+  labels:
+    app: code-reader-frontend
+    component: frontend
+spec:
+  selector:
+    app: code-reader-frontend
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    nodePort: 30080
+    protocol: TCP
+  type: NodePort
+---
+# 测试环境前端 Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: code-reader-frontend-test
+  namespace: code-reader-test
+  labels:
+    app: code-reader-frontend-test
+    component: frontend
+    environment: test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: code-reader-frontend-test
+  template:
+    metadata:
+      labels:
+        app: code-reader-frontend-test
+        component: frontend
+        environment: test
+    spec:
+      containers:
+      - name: code-reader-frontend-test
+        image: ghcr.io/your-username/code-reader-frontend:test-latest
+        ports:
+        - containerPort: 80
+          name: http
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        env:
+        - name: NODE_ENV
+          value: "test"
+      restartPolicy: Always
+---
+# 测试环境前端 Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: code-reader-frontend-test-service
+  namespace: code-reader-test
+  labels:
+    app: code-reader-frontend-test
+    component: frontend
+    environment: test
+spec:
+  selector:
+    app: code-reader-frontend-test
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    nodePort: 30081
+    protocol: TCP
+  type: NodePort

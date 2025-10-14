@@ -1,0 +1,110 @@
+# 生产环境数据存储 PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: code-reader-data-pvc
+  namespace: code-reader
+  labels:
+    app: code-reader
+    component: storage
+    type: data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: standard  # 根据您的集群修改
+---
+# 生产环境日志存储 PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: code-reader-logs-pvc
+  namespace: code-reader
+  labels:
+    app: code-reader
+    component: storage
+    type: logs
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard  # 根据您的集群修改
+---
+# 生产环境缓存存储 PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: code-reader-cache-pvc
+  namespace: code-reader
+  labels:
+    app: code-reader
+    component: storage
+    type: cache
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard  # 根据您的集群修改
+---
+# 测试环境数据存储 PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: code-reader-test-data-pvc
+  namespace: code-reader-test
+  labels:
+    app: code-reader-test
+    component: storage
+    type: data
+    environment: test
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard  # 根据您的集群修改
+---
+# 测试环境日志存储 PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: code-reader-test-logs-pvc
+  namespace: code-reader-test
+  labels:
+    app: code-reader-test
+    component: storage
+    type: logs
+    environment: test
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  storageClassName: standard  # 根据您的集群修改
+---
+# 测试环境缓存存储 PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: code-reader-test-cache-pvc
+  namespace: code-reader-test
+  labels:
+    app: code-reader-test
+    component: storage
+    type: cache
+    environment: test
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 3Gi
+  storageClassName: standard  # 根据您的集群修改

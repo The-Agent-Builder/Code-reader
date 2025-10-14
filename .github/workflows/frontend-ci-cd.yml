@@ -1,0 +1,355 @@
+name: Frontend CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-ci-cd.yml'
+    tags:
+      - 'v*'
+      - 'frontend-v*'
+  workflow_dispatch:
+    inputs:
+      deploy_frontend:
+        description: '部署前端到测试环境'
+        required: false
+        default: true
+        type: boolean
+      skip_tests:
+        description: '跳过测试和检查'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  IMAGE_NAME: code-reader-frontend
+  REGISTRY: ghcr.io
+  NAMESPACE: code-reader
+  DEPLOYMENT_NAME: code-reader-frontend
+
+jobs:
+
+  build-and-test:
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.skip_tests && (inputs.deploy_frontend == true || github.event_name != 'workflow_dispatch') }}
+
+    steps:
+    - name: Checkout代码
+      uses: actions/checkout@v4
+      
+    - name: 设置Node.js环境
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        
+    - name: 安装pnpm
+      run: npm install -g pnpm@latest
+        
+    - name: 安装前端依赖
+      working-directory: ./frontend
+      run: |
+        pnpm config set store-dir .pnpm-store
+        pnpm install --frozen-lockfile
+        
+    - name: 代码质量检查
+      working-directory: ./frontend
+      run: |
+        # TypeScript 类型检查
+        echo "运行 TypeScript 类型检查..."
+        npx tsc --noEmit || echo "TypeScript 类型检查失败，但继续构建"
+        
+        # ESLint 检查（如果配置了）
+        if [ -f ".eslintrc.js" ] || [ -f ".eslintrc.json" ] || [ -f "eslint.config.js" ]; then
+          echo "运行 ESLint 检查..."
+          npx eslint src/ --ext .ts,.tsx || echo "ESLint 检查失败，但继续构建"
+        else
+          echo "未找到 ESLint 配置，跳过 ESLint 检查"
+        fi
+        
+    - name: 构建前端应用
+      working-directory: ./frontend
+      run: |
+        echo "构建前端应用..."
+        pnpm run build
+        
+        # 检查构建产物
+        if [ -d "build" ]; then
+          echo "✅ 前端构建成功，构建产物位于 build/ 目录"
+          ls -la build/
+        else
+          echo "❌ 前端构建失败，未找到构建产物"
+          exit 1
+        fi
+        
+    - name: 上传构建产物
+      uses: actions/upload-artifact@v4
+      with:
+        name: frontend-build
+        path: frontend/build/
+        retention-days: 7
+
+
+  docker-build-push:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: |
+      always() && 
+      (needs.build-and-test.result == 'success' || inputs.skip_tests) && 
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') &&
+      (inputs.deploy_frontend == true || github.event_name != 'workflow_dispatch')
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      image-tag: ${{ steps.image-info.outputs.image-tag }}
+      full-image-name: ${{ steps.image-info.outputs.full-image-name }}
+    
+    steps:
+    - name: Checkout代码
+      uses: actions/checkout@v4
+      
+    - name: 下载构建产物
+      uses: actions/download-artifact@v4
+      with:
+        name: frontend-build
+        path: frontend/build/
+      
+    - name: 设置Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: 登录GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: 生成镜像标签和元数据
+      id: image-info
+      run: |
+        SHORT_SHA=${GITHUB_SHA::7}
+        
+        # 根据触发方式生成标签
+        if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          # Tag 触发：使用 tag 名称
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          IMAGE_TAG="${TAG_NAME}-${SHORT_SHA}"
+        elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          # Main 分支：使用 main 和时间戳
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          IMAGE_TAG="main-${TIMESTAMP}-${SHORT_SHA}"
+        else
+          # 手动触发或其他分支：使用分支名
+          BRANCH_NAME=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}
+          BRANCH_NAME=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9._-]/-/g')
+          IMAGE_TAG="${BRANCH_NAME}-${SHORT_SHA}"
+        fi
+        
+        # 使用仓库owner作为组织名，转换为小写（Docker要求）
+        REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+        FULL_IMAGE_NAME="${{ env.REGISTRY }}/${REPO_OWNER}/${{ env.IMAGE_NAME }}:${IMAGE_TAG}"
+        LATEST_IMAGE_NAME="${{ env.REGISTRY }}/${REPO_OWNER}/${{ env.IMAGE_NAME }}:latest"
+        
+        echo "image-tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+        echo "full-image-name=${FULL_IMAGE_NAME}" >> $GITHUB_OUTPUT
+        echo "latest-image-name=${LATEST_IMAGE_NAME}" >> $GITHUB_OUTPUT
+        
+    - name: 构建并推送Docker镜像
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./frontend/Dockerfile
+        push: true
+        tags: |
+          ${{ steps.image-info.outputs.full-image-name }}
+          ${{ steps.image-info.outputs.latest-image-name }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+
+
+
+  deploy-to-kubernetes:
+    needs: docker-build-push
+    runs-on: ubuntu-latest
+    # 仅自动部署：main 分支或 tag
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: Checkout代码
+      uses: actions/checkout@v4
+      
+    - name: 确定部署环境
+      id: deploy-env
+      run: |
+        # 确定命名空间和部署名称
+        NAMESPACE="code-reader"
+        DEPLOYMENT="code-reader-frontend"
+        ENV_NAME="生产环境"
+        
+        echo "namespace=${NAMESPACE}" >> $GITHUB_OUTPUT
+        echo "deployment=${DEPLOYMENT}" >> $GITHUB_OUTPUT
+        echo "env-name=${ENV_NAME}" >> $GITHUB_OUTPUT
+      
+    - name: 配置 kubectl
+      env:
+        K8S_TOKEN: ${{ secrets.K8S_TOKEN }}
+        K8S_API_URL: ${{ secrets.K8S_API_URL }}
+      run: |
+        # 安装 kubectl
+        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+        chmod +x kubectl
+        sudo mv kubectl /usr/local/bin/
+        
+        # 配置 kubectl
+        kubectl config set-cluster k8s-cluster --server="$K8S_API_URL" --insecure-skip-tls-verify=true
+        kubectl config set-credentials github-actions --token="$K8S_TOKEN"
+        kubectl config set-context default --cluster=k8s-cluster --user=github-actions --namespace=${{ steps.deploy-env.outputs.namespace }}
+        kubectl config use-context default
+        
+        # 验证连接
+        kubectl cluster-info
+      
+    - name: 应用 Kubernetes 配置
+      run: |
+        # 应用基础配置
+        kubectl apply -f k8s/00-namespace.yaml
+        
+        # 仅在 ConfigMap 不存在时创建（不覆盖已有配置）
+        kubectl get configmap code-reader-config -n code-reader >/dev/null 2>&1 || kubectl apply -f k8s/03-config.yaml
+        
+        kubectl apply -f k8s/04-pvc.yaml
+        kubectl apply -f k8s/05-rbac.yaml
+        
+    - name: 更新前端镜像并部署
+      env:
+        IMAGE_TAG: ${{ needs.docker-build-push.outputs.full-image-name }}
+        NAMESPACE: ${{ steps.deploy-env.outputs.namespace }}
+        DEPLOYMENT: ${{ steps.deploy-env.outputs.deployment }}
+      run: |
+        # 备份原始文件
+        cp k8s/01-frontend.yaml k8s/01-frontend.yaml.bak
+        
+        # 只更新生产环境的镜像
+        sed -i "0,/image:.*code-reader-frontend.*/s||image: $IMAGE_TAG|" k8s/01-frontend.yaml
+        
+        # 应用前端配置
+        kubectl apply -f k8s/01-frontend.yaml
+        
+        # 恢复原始文件
+        mv k8s/01-frontend.yaml.bak k8s/01-frontend.yaml
+        
+        echo "Frontend deployment updated with image: $IMAGE_TAG"
+
+    - name: Verify deployment
+      env:
+        NAMESPACE: ${{ steps.deploy-env.outputs.namespace }}
+        DEPLOYMENT: ${{ steps.deploy-env.outputs.deployment }}
+      run: |
+        # Wait for rollout to complete
+        echo "Waiting for frontend deployment to complete..."
+        kubectl rollout status deployment/$DEPLOYMENT -n $NAMESPACE --timeout=5m
+        
+        # 显示部署状态
+        kubectl get pods -n $NAMESPACE -l app=$DEPLOYMENT
+        kubectl get services -n $NAMESPACE -l app=$DEPLOYMENT
+        
+    - name: 前端部署成功通知
+      env:
+        ENV_NAME: ${{ steps.deploy-env.outputs.env-name }}
+        NAMESPACE: ${{ steps.deploy-env.outputs.namespace }}
+        DEPLOYMENT: ${{ steps.deploy-env.outputs.deployment }}
+      run: |
+        echo "🎉 前端${ENV_NAME}部署成功!"
+        echo "镜像: ${{ needs.docker-build-push.outputs.full-image-name }}"
+        echo "命名空间: $NAMESPACE"
+        echo "Deployment: $DEPLOYMENT"
+        
+        if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          echo "标签: $TAG_NAME"
+        elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          echo "分支: main"
+        fi
+
+
+  deploy-to-test-kubernetes:
+    needs: docker-build-push
+    runs-on: ubuntu-latest
+    # 仅手动触发且启用前端部署
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy_frontend == true
+
+    steps:
+    - name: Checkout代码
+      uses: actions/checkout@v4
+
+    - name: 配置 kubectl
+      env:
+        K8S_TOKEN: ${{ secrets.K8S_TOKEN }}
+        K8S_API_URL: ${{ secrets.K8S_API_URL }}
+      run: |
+        # 安装 kubectl
+        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+        chmod +x kubectl
+        sudo mv kubectl /usr/local/bin/
+        
+        # 配置 kubectl
+        kubectl config set-cluster k8s-cluster --server="$K8S_API_URL" --insecure-skip-tls-verify=true
+        kubectl config set-credentials github-actions --token="$K8S_TOKEN"
+        kubectl config set-context default --cluster=k8s-cluster --user=github-actions --namespace=code-reader-test
+        kubectl config use-context default
+        
+        # 验证连接
+        kubectl cluster-info
+
+    - name: 应用 Kubernetes 配置
+      run: |
+        # 应用基础配置
+        kubectl apply -f k8s/00-namespace.yaml
+        
+        # 仅在 ConfigMap 不存在时创建（不覆盖已有配置）
+        kubectl get configmap code-reader-test-config -n code-reader-test >/dev/null 2>&1 || kubectl apply -f k8s/03-config.yaml
+        
+        kubectl apply -f k8s/04-pvc.yaml
+        kubectl apply -f k8s/05-rbac.yaml
+
+    - name: 更新测试前端镜像并部署
+      env:
+        IMAGE_TAG: ${{ needs.docker-build-push.outputs.full-image-name }}
+      run: |
+        # 备份原始文件
+        cp k8s/01-frontend.yaml k8s/01-frontend.yaml.bak
+        
+        # 只更新测试环境的镜像（第二个匹配）
+        sed -i "0,/image:.*code-reader-frontend.*/! {0,/image:.*code-reader-frontend.*/s||image: $IMAGE_TAG|}" k8s/01-frontend.yaml
+        
+        # 应用前端配置
+        kubectl apply -f k8s/01-frontend.yaml
+        
+        # 恢复原始文件
+        mv k8s/01-frontend.yaml.bak k8s/01-frontend.yaml
+        
+        echo "Test frontend deployment updated with image: $IMAGE_TAG"
+
+    - name: Verify test deployment
+      run: |
+        # 等待测试部署完成
+        echo "Waiting for test frontend deployment to complete..."
+        kubectl rollout status deployment/code-reader-frontend-test -n code-reader-test --timeout=5m
+        
+        # 显示部署状态
+        kubectl get pods -n code-reader-test -l app=code-reader-frontend-test
+        kubectl get services -n code-reader-test -l app=code-reader-frontend-test
+
+    - name: 前端测试部署成功通知
+      run: |
+        BRANCH_NAME=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}
+        echo "🧪 前端测试环境部署成功!"
+        echo "分支: $BRANCH_NAME"
+        echo "镜像: ${{ needs.docker-build-push.outputs.full-image-name }}"
+        echo "命名空间: code-reader-test"
+        echo "Deployment: code-reader-frontend-test"

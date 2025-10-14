@@ -1,0 +1,24 @@
+# 生产环境 ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: code-reader-config
+  namespace: code-reader
+  labels:
+    app: code-reader
+    component: config
+data:
+  env: ""
+---
+# 测试环境 ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: code-reader-test-config
+  namespace: code-reader-test
+  labels:
+    app: code-reader-test
+    component: config
+    environment: test
+data:
+  env: ""
