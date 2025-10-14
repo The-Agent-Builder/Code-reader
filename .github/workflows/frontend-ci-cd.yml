@@ -33,16 +33,29 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '20'
-        cache: 'npm'
         
     - name: 安装pnpm
-      run: npm install -g pnpm@latest
+      uses: pnpm/action-setup@v4
+      with:
+        version: 9
+        
+    - name: 获取pnpm store目录
+      id: pnpm-cache
+      shell: bash
+      run: |
+        echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+        
+    - name: 设置pnpm缓存
+      uses: actions/cache@v4
+      with:
+        path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+        key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+        restore-keys: |
+          ${{ runner.os }}-pnpm-store-
         
     - name: 安装前端依赖
       working-directory: ./frontend
-      run: |
-        pnpm config set store-dir .pnpm-store
-        pnpm install --frozen-lockfile
+      run: pnpm install --frozen-lockfile
         
     - name: 代码质量检查
       working-directory: ./frontend
