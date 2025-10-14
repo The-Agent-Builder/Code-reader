@@ -231,7 +231,13 @@ jobs:
           --namespace=code-reader
         
         # 仅在 ConfigMap 不存在时创建（避免覆盖已配置的值）
-        kubectl get configmap code-reader-frontend-nginx-config -n code-reader >/dev/null 2>&1 || kubectl apply -f k8s/03-config.yaml
+        # 注意：不要使用 kubectl apply -f k8s/03-config.yaml，会覆盖所有 ConfigMap
+        if ! kubectl get configmap code-reader-frontend-nginx-config -n code-reader >/dev/null 2>&1; then
+          echo "生产环境前端 Nginx ConfigMap 不存在，需要手动创建或首次部署时创建"
+        fi
+        if ! kubectl get configmap code-reader-backend-config -n code-reader >/dev/null 2>&1; then
+          echo "生产环境后端 ConfigMap 不存在，需要手动创建或首次部署时创建"
+        fi
         
         kubectl apply -f k8s/04-pvc.yaml
         kubectl apply -f k8s/05-rbac.yaml
@@ -331,7 +337,13 @@ jobs:
           --namespace=code-reader
         
         # 仅在 ConfigMap 不存在时创建（避免覆盖已配置的值）
-        kubectl get configmap code-reader-frontend-nginx-config-test -n code-reader >/dev/null 2>&1 || kubectl apply -f k8s/03-config.yaml
+        # 注意：不要使用 kubectl apply -f k8s/03-config.yaml，会覆盖所有 ConfigMap
+        if ! kubectl get configmap code-reader-frontend-nginx-config-test -n code-reader >/dev/null 2>&1; then
+          echo "测试环境前端 Nginx ConfigMap 不存在，需要手动创建或首次部署时创建"
+        fi
+        if ! kubectl get configmap code-reader-backend-config-test -n code-reader >/dev/null 2>&1; then
+          echo "测试环境后端 ConfigMap 不存在，需要手动创建或首次部署时创建"
+        fi
         
         kubectl apply -f k8s/04-pvc.yaml
         kubectl apply -f k8s/05-rbac.yaml
