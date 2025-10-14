@@ -2,15 +2,6 @@ name: Backend CI/CD Pipeline
 
 on:
   push:
-    branches: [ master ]
-    paths:
-      - 'backend/**'
-      - 'src/**'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - 'requirements.txt'
-      - 'Dockerfile'
-      - '.github/workflows/backend-ci-cd.yml'
     tags:
       - 'v*'
       - 'backend-v*'
@@ -129,7 +120,7 @@ jobs:
     if: |
       always() && 
       (needs.build-and-test.result == 'success' || inputs.skip_tests) && 
-      (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
+      (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
     permissions:
       contents: read
       packages: write
@@ -201,8 +192,8 @@ jobs:
   deploy-to-kubernetes:
     needs: docker-build-push
     runs-on: ubuntu-latest
-    # 仅自动部署：master 分支或 tag
-    if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
+    # 仅 tag 触发时自动部署到生产环境
+    if: startsWith(github.ref, 'refs/tags/')
     
     steps:
     - name: Checkout代码
