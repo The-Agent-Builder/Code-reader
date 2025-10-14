@@ -2,7 +2,7 @@ name: Backend CI/CD Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
     paths:
       - 'backend/**'
       - 'src/**'
@@ -134,7 +134,7 @@ jobs:
     if: |
       always() && 
       (needs.build-and-test.result == 'success' || inputs.skip_tests) && 
-      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') &&
+      (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') &&
       (inputs.deploy_backend == true || github.event_name != 'workflow_dispatch')
     permissions:
       contents: read
@@ -169,7 +169,7 @@ jobs:
           # Tag 触发：使用 tag 名称
           TAG_NAME=${GITHUB_REF#refs/tags/}
           IMAGE_TAG="${TAG_NAME}-${SHORT_SHA}"
-        elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+        elif [[ "${{ github.ref }}" == "refs/heads/master" ]]; then
           # Main 分支：使用 main 和时间戳
           TIMESTAMP=$(date +%Y%m%d-%H%M%S)
           IMAGE_TAG="main-${TIMESTAMP}-${SHORT_SHA}"
@@ -207,8 +207,8 @@ jobs:
   deploy-to-kubernetes:
     needs: docker-build-push
     runs-on: ubuntu-latest
-    # 仅自动部署：main 分支或 tag
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+    # 仅自动部署：master 分支或 tag
+    if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
     
     steps:
     - name: Checkout代码
@@ -303,7 +303,7 @@ jobs:
         if [[ "${{ github.ref }}" == refs/tags/* ]]; then
           TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "标签: $TAG_NAME"
-        elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+        elif [[ "${{ github.ref }}" == "refs/heads/master" ]]; then
           echo "分支: main"
         fi
 
