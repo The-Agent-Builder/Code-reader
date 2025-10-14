@@ -84,36 +84,50 @@ data:
   .env: |
     # Code Reader 后端生产环境配置
     
-    # GitHub 配置
+    # GitHub API 配置
     GITHUB_TOKEN=
     
-    # OpenAI/LLM 配置
+    # OpenAI API 配置
     OPENAI_API_KEY=
-    OPENAI_BASE_URL=
+    OPENAI_BASE_URL=https://api.openai.com/v1
     OPENAI_MODEL=gpt-3.5-turbo
     
-    # RAG 配置
+    # LLM 并行处理配置
+    LLM_MAX_CONCURRENT=25
+    LLM_BATCH_SIZE=50
+    LLM_REQUEST_TIMEOUT=120
+    LLM_RETRY_DELAY=2
+    
+    # RAG 服务配置
     RAG_BASE_URL=
     RAG_BATCH_SIZE=100
     
     # README API 配置（外部文档生成服务）
     README_API_BASE_URL=
     
+    # 后端接口配置
+    APP_HOST=0.0.0.0
+    APP_PORT=8000
+    
+    # 本地存储配置
+    LOCAL_REPO_PATH=/app/data/repos
+    RESULTS_PATH=/app/data/results
+    VECTORSTORE_PATH=/app/data/vectorstores
+    
     # 数据库配置
+    DB_DIALECT=mysql+pymysql
     DB_HOST=
     DB_PORT=3306
     DB_NAME=code_analysis
     DB_USER=
     DB_PASSWORD=
+    DB_PARAMS=charset=utf8mb4
+    DB_ECHO=0
+    DB_POOL_SIZE=5
+    DB_MAX_OVERFLOW=10
     
-    # 应用配置
-    APP_HOST=0.0.0.0
-    APP_PORT=8000
-    
-    # 存储路径
-    LOCAL_REPO_PATH=/app/data/repos
-    RESULTS_PATH=/app/data/results
-    VECTORSTORE_PATH=/app/data/vectorstores
+    # 设置登录密码
+    PASSWORD=
 ---
 # 测试环境后端 ConfigMap
 apiVersion: v1
@@ -129,33 +143,47 @@ data:
   .env: |
     # Code Reader 后端测试环境配置
     
-    # GitHub 配置
+    # GitHub API 配置
     GITHUB_TOKEN=
     
-    # OpenAI/LLM 配置
+    # OpenAI API 配置
     OPENAI_API_KEY=
-    OPENAI_BASE_URL=
+    OPENAI_BASE_URL=https://api.openai.com/v1
     OPENAI_MODEL=gpt-3.5-turbo
     
-    # RAG 配置
+    # LLM 并行处理配置
+    LLM_MAX_CONCURRENT=25
+    LLM_BATCH_SIZE=50
+    LLM_REQUEST_TIMEOUT=120
+    LLM_RETRY_DELAY=2
+    
+    # RAG 服务配置
     RAG_BASE_URL=
     RAG_BATCH_SIZE=100
     
     # README API 配置（外部文档生成服务）
     README_API_BASE_URL=
     
+    # 后端接口配置
+    APP_HOST=0.0.0.0
+    APP_PORT=8000
+    
+    # 本地存储配置
+    LOCAL_REPO_PATH=/app/data/repos
+    RESULTS_PATH=/app/data/results
+    VECTORSTORE_PATH=/app/data/vectorstores
+    
     # 数据库配置
+    DB_DIALECT=mysql+pymysql
     DB_HOST=
     DB_PORT=3306
     DB_NAME=code_analysis_test
     DB_USER=
     DB_PASSWORD=
+    DB_PARAMS=charset=utf8mb4
+    DB_ECHO=0
+    DB_POOL_SIZE=5
+    DB_MAX_OVERFLOW=10
     
-    # 应用配置
-    APP_HOST=0.0.0.0
-    APP_PORT=8000
-    
-    # 存储路径
-    LOCAL_REPO_PATH=/app/data/repos
-    RESULTS_PATH=/app/data/results
-    VECTORSTORE_PATH=/app/data/vectorstores
+    # 设置登录密码
+    PASSWORD=
