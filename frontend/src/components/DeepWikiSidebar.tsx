@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -120,11 +120,11 @@ const isValidTitle = (title: string): boolean => {
   return true;
 };
 
-// 生成标题ID
+// 生成标题ID - 必须与 DeepWikiMainContent.tsx 中的逻辑完全一致
 const generateSectionId = (title: string): string => {
   return title
     .toLowerCase()
-    .replace(/[^a-z0-9\u4e00-\u9fa5\s]/g, "")
+    .replace(/[^a-z0-9\u4e00-\u9fa5\s-]/g, "") // 保留连字符
     .replace(/\s+/g, "-")
     .replace(/^-+|-+$/g, ""); // 移除开头和结尾的连字符
 };
@@ -199,7 +199,7 @@ export function Sidebar({
         <Button
           variant="ghost"
           className={`
-            w-full justify-start px-2 py-1 h-auto
+            w-full justify-start px-2 py-1 h-auto transition-all duration-100
             ${
               activeSection === section.id
                 ? "bg-blue-100 text-blue-700"
@@ -207,6 +207,7 @@ export function Sidebar({
             }
           `}
           onClick={() => {
+            // 立即调用，不使用任何延迟
             onSectionChange(section.id);
             if (hasChildren) {
               toggleExpanded(section.id);
@@ -230,14 +231,17 @@ export function Sidebar({
                 key={child.id}
                 variant="ghost"
                 className={`
-                  w-full justify-start px-2 py-1 h-auto text-sm
+                  w-full justify-start px-2 py-1 h-auto text-sm transition-all duration-100
                   ${
                     activeSection === child.id
                       ? "bg-blue-50 text-blue-600"
                       : "text-gray-600 hover:bg-gray-50"
                   }
                 `}
-                onClick={() => onSectionChange(child.id)}
+                onClick={() => {
+                  // 立即调用，提供最快响应
+                  onSectionChange(child.id);
+                }}
               >
                 {child.title}
               </Button>
@@ -255,14 +259,17 @@ export function Sidebar({
         <Button
           variant="ghost"
           className={`
-            w-full justify-start px-2 py-1 h-auto
+            w-full justify-start px-2 py-1 h-auto transition-all duration-100
             ${
               activeSection === "overview"
                 ? "bg-blue-100 text-blue-700"
                 : "text-gray-700 hover:bg-gray-100"
             }
           `}
-          onClick={() => onSectionChange("overview")}
+          onClick={() => {
+            // 立即响应，不使用任何延迟
+            onSectionChange("overview");
+          }}
         >
           <BarChart3 className="h-4 w-4 mr-2" />
           <span className="text-sm">项目概览</span>

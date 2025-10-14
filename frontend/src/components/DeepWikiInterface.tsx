@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "./ui/button";
 import { Sidebar } from "./DeepWikiSidebar";
 import { MainContent } from "./DeepWikiMainContent";
@@ -36,6 +36,11 @@ export default function DeepWikiInterface({
 }: DeepWikiInterfaceProps) {
     const { setCurrentRepository } = useProject();
     const [activeSection, setActiveSection] = useState("overview");
+    
+    // 使用 useCallback 稳定 setActiveSection，避免不必要的子组件重新渲染
+    const handleSectionChange = useCallback((section: string) => {
+        setActiveSection(section);
+    }, []);
     const [selectedFile, setSelectedFile] = useState<string | null>(null);
     const [isFileExplorerVisible, setIsFileExplorerVisible] = useState(true);
     const [viewMode, setViewMode] = useState<ViewMode>("documentation");
@@ -60,7 +65,8 @@ export default function DeepWikiInterface({
     } | null>(null);
     const [currentTaskId, setCurrentTaskId] = useState<number | null>(null);
 
-    const handleFileSelect = (filePath: string) => {
+    // 使用 useCallback 优化，避免每次渲染都创建新函数
+    const handleFileSelect = useCallback((filePath: string) => {
         console.log("File selected:", filePath);
         console.log("Available files in map:", Array.from(fileDataMap.keys()));
 
@@ -84,10 +90,10 @@ export default function DeepWikiInterface({
             console.warn("No file analysis ID found for file:", filePath);
             console.warn("File data map contents:", fileDataMap);
         }
-    };
+    }, [fileDataMap]);
 
-    // 新增：处理文件高亮定位
-    const handleFileHighlight = (filePath: string) => {
+    // 新增：处理文件高亮定位 - 使用 useCallback 优化
+    const handleFileHighlight = useCallback((filePath: string) => {
         console.log("File highlight requested:", filePath);
 
         // 标准化文件路径：URL解码 + 路径分隔符标准化
@@ -149,7 +155,7 @@ export default function DeepWikiInterface({
         // setTimeout(() => {
         //   setHighlightedFile(null);
         // }, 3000);
-    };
+    }, [fileTree]);
 
     const handleBackToDocumentation = () => {
         setViewMode("documentation");
@@ -219,9 +225,9 @@ export default function DeepWikiInterface({
 
             // 5. 提取任务统计信息
             const statistics = {
-                code_lines: latestTask.code_lines || 0,
+                code_lines: (latestTask as any).code_lines || 0,
                 total_files: latestTask.total_files || 0,
-                module_count: latestTask.module_count || 0,
+                module_count: (latestTask as any).module_count || 0,
             };
             setTaskStatistics(statistics);
             console.log("Task statistics:", statistics);
@@ -304,7 +310,7 @@ export default function DeepWikiInterface({
                     <aside className="w-64 border-r border-gray-200 bg-gray-50 overflow-y-auto">
                         <Sidebar
                             activeSection={activeSection}
-                            onSectionChange={setActiveSection}
+                            onSectionChange={handleSectionChange}
                             taskId={currentTaskId}
                         />
                     </aside>
@@ -319,7 +325,7 @@ export default function DeepWikiInterface({
                     {viewMode === "documentation" ? (
                         <MainContent
                             activeSection={activeSection}
-                            onSectionChange={setActiveSection}
+                            onSectionChange={handleSectionChange}
                             onFileSelect={handleFileSelect}
                             onFileHighlight={handleFileHighlight}
                             fileTree={fileTree}
