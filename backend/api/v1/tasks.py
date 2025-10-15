@@ -66,6 +66,9 @@ async def create_task_from_zip(
         task_uuid = str(uuid.uuid4())
         task_id_string = f"task_{task_uuid}"
         
+        # 初始化 external_file_path
+        external_file_path = None
+        
         # 创建临时目录处理zip文件
         with tempfile.TemporaryDirectory() as temp_dir:
             # 保存上传的zip文件
@@ -220,7 +223,12 @@ async def create_task_from_zip(
                 "task_index": task_uuid  # 使用UUID作为任务索引
             }
             
-            task_result = AnalysisTaskService.create_analysis_task(task_data,external_file_path, db)
+            # 如果没有外部路径，使用本地路径
+            if external_file_path is None:
+                external_file_path = str(repo_path)
+                logger.info(f"外部系统上传失败或未配置，使用本地路径: {external_file_path}")
+            
+            task_result = AnalysisTaskService.create_analysis_task(task_data, external_file_path, db)
             if task_result["status"] == "error":
                 return JSONResponse(
                     status_code=500,

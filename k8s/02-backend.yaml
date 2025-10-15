@@ -1,0 +1,191 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: code-reader-backend
+  namespace: code-reader
+  labels:
+    app: code-reader-backend
+    component: backend
+    version: v1.0.0
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: code-reader-backend
+  template:
+    metadata:
+      labels:
+        app: code-reader-backend
+        component: backend
+    spec:
+      imagePullSecrets:
+      - name: ghcr-secret
+      containers:
+      - name: code-reader-backend
+        image: ghcr.io/the-agent-builder/code-reader-backend:latest
+        ports:
+        - containerPort: 8000
+          name: http
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        volumeMounts:
+        - name: data-volume
+          mountPath: /app/data
+        - name: logs-volume
+          mountPath: /app/logs
+        - name: env-config
+          mountPath: /app/.env
+          subPath: .env
+          readOnly: true
+      volumes:
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: code-reader-data-pvc
+      - name: logs-volume
+        persistentVolumeClaim:
+          claimName: code-reader-logs-pvc
+      - name: env-config
+        configMap:
+          name: code-reader-backend-config
+          items:
+          - key: .env
+            path: .env
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: code-reader-backend-service
+  namespace: code-reader
+  labels:
+    app: code-reader-backend
+    component: backend
+spec:
+  selector:
+    app: code-reader-backend
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+    protocol: TCP
+  type: NodePort
+  # nodePort 使用随机分配，避免端口冲突
+---
+# 测试环境后端 Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: code-reader-backend-test
+  namespace: code-reader
+  labels:
+    app: code-reader-backend-test
+    component: backend
+    environment: test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: code-reader-backend-test
+  template:
+    metadata:
+      labels:
+        app: code-reader-backend-test
+        component: backend
+        environment: test
+    spec:
+      imagePullSecrets:
+      - name: ghcr-secret
+      containers:
+      - name: code-reader-backend-test
+        image: ghcr.io/the-agent-builder/code-reader-backend:test-latest
+        ports:
+        - containerPort: 8000
+          name: http
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "200m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        volumeMounts:
+        - name: test-data-volume
+          mountPath: /app/data
+        - name: test-logs-volume
+          mountPath: /app/logs
+        - name: env-config
+          mountPath: /app/.env
+          subPath: .env
+          readOnly: true
+      volumes:
+      - name: test-data-volume
+        persistentVolumeClaim:
+          claimName: code-reader-data-pvc-test
+      - name: test-logs-volume
+        persistentVolumeClaim:
+          claimName: code-reader-logs-pvc-test
+      - name: env-config
+        configMap:
+          name: code-reader-backend-config-test
+          items:
+          - key: .env
+            path: .env
+      restartPolicy: Always
+---
+# 测试环境后端 Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: code-reader-backend-service-test
+  namespace: code-reader
+  labels:
+    app: code-reader-backend-test
+    component: backend
+    environment: test
+spec:
+  selector:
+    app: code-reader-backend-test
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+    protocol: TCP
+  type: NodePort
+  # nodePort 使用随机分配，避免端口冲突

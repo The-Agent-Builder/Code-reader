@@ -1,0 +1,169 @@
+# 生产环境 ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: code-reader-sa
+  namespace: code-reader
+  labels:
+    app: code-reader
+    component: rbac
+---
+# 测试环境 ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: code-reader-test-sa
+  namespace: code-reader
+  labels:
+    app: code-reader-test
+    component: rbac
+    environment: test
+---
+# GitHub Actions ServiceAccount (用于 CI/CD)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: github-actions
+  namespace: code-reader
+  labels:
+    app: github-actions
+    component: rbac
+---
+# GitHub Actions 测试环境 ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: github-actions-test
+  namespace: code-reader
+  labels:
+    app: github-actions-test
+    component: rbac
+    environment: test
+---
+# 应用权限 Role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: code-reader
+  name: code-reader-role
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods", "services"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch"]
+---
+# 测试环境应用权限 Role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: code-reader
+  name: code-reader-test-role
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods", "services"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch"]
+---
+# GitHub Actions 权限 Role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: code-reader
+  name: github-actions-role
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "patch", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods", "services"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["get", "list", "watch"]
+---
+# GitHub Actions 测试环境权限 Role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: code-reader
+  name: github-actions-test-role
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "patch", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods", "services"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["get", "list", "watch"]
+---
+# 应用权限 RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: code-reader-binding
+  namespace: code-reader
+subjects:
+- kind: ServiceAccount
+  name: code-reader-sa
+  namespace: code-reader
+roleRef:
+  kind: Role
+  name: code-reader-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# 测试环境应用权限 RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: code-reader-test-binding
+  namespace: code-reader
+subjects:
+- kind: ServiceAccount
+  name: code-reader-test-sa
+  namespace: code-reader
+roleRef:
+  kind: Role
+  name: code-reader-test-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# GitHub Actions 权限 RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: github-actions-binding
+  namespace: code-reader
+subjects:
+- kind: ServiceAccount
+  name: github-actions
+  namespace: code-reader
+roleRef:
+  kind: Role
+  name: github-actions-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# GitHub Actions 测试环境权限 RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: github-actions-test-binding
+  namespace: code-reader
+subjects:
+- kind: ServiceAccount
+  name: github-actions-test
+  namespace: code-reader
+roleRef:
+  kind: Role
+  name: github-actions-test-role
+  apiGroup: rbac.authorization.k8s.io

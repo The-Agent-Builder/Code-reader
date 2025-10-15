@@ -1,0 +1,110 @@
+# 生产环境数据存储 PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: code-reader-data-pvc
+  namespace: code-reader
+  labels:
+    app: code-reader
+    component: storage
+    type: data
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: alicloud-nas-subpath
+---
+# 生产环境日志存储 PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: code-reader-logs-pvc
+  namespace: code-reader
+  labels:
+    app: code-reader
+    component: storage
+    type: logs
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: alicloud-nas-subpath
+---
+# 生产环境缓存存储 PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: code-reader-cache-pvc
+  namespace: code-reader
+  labels:
+    app: code-reader
+    component: storage
+    type: cache
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: alicloud-nas-subpath
+---
+# 测试环境数据存储 PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: code-reader-data-pvc-test
+  namespace: code-reader
+  labels:
+    app: code-reader
+    component: storage
+    type: data
+    environment: test
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: alicloud-nas-subpath
+---
+# 测试环境日志存储 PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: code-reader-logs-pvc-test
+  namespace: code-reader
+  labels:
+    app: code-reader
+    component: storage
+    type: logs
+    environment: test
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 2Gi
+  storageClassName: alicloud-nas-subpath
+---
+# 测试环境缓存存储 PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: code-reader-cache-pvc-test
+  namespace: code-reader
+  labels:
+    app: code-reader
+    component: storage
+    type: cache
+    environment: test
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 3Gi
+  storageClassName: alicloud-nas-subpath

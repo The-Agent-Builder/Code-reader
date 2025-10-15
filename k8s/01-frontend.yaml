@@ -1,0 +1,171 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: code-reader-frontend
+  namespace: code-reader
+  labels:
+    app: code-reader-frontend
+    component: frontend
+    version: v1.0.0
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: code-reader-frontend
+  template:
+    metadata:
+      labels:
+        app: code-reader-frontend
+        component: frontend
+    spec:
+      imagePullSecrets:
+      - name: ghcr-secret
+      containers:
+      - name: code-reader-frontend
+        image: ghcr.io/the-agent-builder/code-reader-frontend:latest
+        ports:
+        - containerPort: 80
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        env:
+        - name: NODE_ENV
+          value: "production"
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d/default.conf
+          subPath: default.conf
+          readOnly: true
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: code-reader-frontend-nginx-config
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: code-reader-frontend-service
+  namespace: code-reader
+  labels:
+    app: code-reader-frontend
+    component: frontend
+spec:
+  selector:
+    app: code-reader-frontend
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    protocol: TCP
+  type: NodePort
+  # nodePort 使用随机分配，避免端口冲突
+---
+# 测试环境前端 Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: code-reader-frontend-test
+  namespace: code-reader
+  labels:
+    app: code-reader-frontend-test
+    component: frontend
+    environment: test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: code-reader-frontend-test
+  template:
+    metadata:
+      labels:
+        app: code-reader-frontend-test
+        component: frontend
+        environment: test
+    spec:
+      imagePullSecrets:
+      - name: ghcr-secret
+      containers:
+      - name: code-reader-frontend-test
+        image: ghcr.io/the-agent-builder/code-reader-frontend:test-latest
+        ports:
+        - containerPort: 80
+          name: http
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        env:
+        - name: NODE_ENV
+          value: "test"
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d/default.conf
+          subPath: default.conf
+          readOnly: true
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: code-reader-frontend-nginx-config-test
+      restartPolicy: Always
+---
+# 测试环境前端 Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: code-reader-frontend-service-test
+  namespace: code-reader
+  labels:
+    app: code-reader-frontend-test
+    component: frontend
+    environment: test
+spec:
+  selector:
+    app: code-reader-frontend-test
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    protocol: TCP
+  type: NodePort
+  # nodePort 使用随机分配，避免端口冲突
