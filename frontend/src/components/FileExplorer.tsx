@@ -201,12 +201,10 @@ export function FileExplorer({
   // 如果有错误
   if (error) {
     return (
-      <div className="p-4">
-        <div className="text-red-600 text-sm">
-          <p className="font-medium">Error loading files:</p>
-          <p className="mt-1">{error}</p>
+        <div className="flex items-center space-x-3 px-4 py-3">
+          <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent animate-spin rounded-full"/>
+          <span className="text-gray-500 font-medium text-sm">正在生成中...</span>
         </div>
-      </div>
     );
   }
 
