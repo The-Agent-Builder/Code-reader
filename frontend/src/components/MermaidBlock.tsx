@@ -9,7 +9,46 @@ const defaultOptions = {
   themeVariables: {
     background: "transparent",
     mainBkg: "transparent",
+    lineColor: "#333333", // 确保线条颜色足够深
+    primaryBorderColor: "#333333",
+    primaryTextColor: "#1f2937",
+    secondaryColor: "#f8f9fa",
+    tertiaryColor: "#ffffff",
+    // 流程图特定配置
+    flowchart: {
+      nodeBkg: "#f8f9fa",
+      nodeBorder: "#333333",
+      clusterBkg: "#ffffff",
+      clusterBorder: "#333333",
+      defaultLinkColor: "#333333",
+      titleColor: "#1f2937",
+    },
+    // 序列图特定配置
+    sequence: {
+      actorBkg: "#f8f9fa",
+      actorBorder: "#333333",
+      actorTextColor: "#1f2937",
+      actorLineColor: "#333333",
+      signalColor: "#333333",
+      signalTextColor: "#1f2937",
+      labelBoxBkgColor: "#ffffff",
+      labelBoxBorderColor: "#333333",
+      labelTextColor: "#1f2937",
+      loopTextColor: "#1f2937",
+      activationBkgColor: "#e5e7eb",
+      activationBorderColor: "#333333",
+    },
   },
+  flowchart: {
+    useMaxWidth: true,
+    htmlLabels: true,
+    curve: "basis",
+  },
+  sequence: {
+    useMaxWidth: true,
+    wrap: true,
+  },
+  logLevel: "error",
 };
 
 let mermaidInitialized = false;
@@ -119,10 +158,9 @@ export function MermaidBlock({ chart }: MermaidBlockProps) {
             });
           }
         } catch (error) {
+          //Mermaid 渲染失败 让其展示原文 原文格式和其他代码展示一致
           if (!isCancelled && containerRef.current) {
-            containerRef.current.innerHTML = `<pre class="bg-red-50 text-red-600 p-3 rounded border border-red-200 text-sm">Mermaid 渲染失败：${String(
-              error
-            )}</pre>`;
+            containerRef.current.innerHTML = `<pre class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto mb-4 text-sm font-mono">${chart}</pre>`;
           }
           console.error("Mermaid 渲染失败", error);
         } finally {

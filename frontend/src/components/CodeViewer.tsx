@@ -575,7 +575,10 @@ export default function CodeViewer({
                       <Brain className="h-5 w-5 text-red-600" />
                       <h3 className="text-red-800">加载失败</h3>
                     </div>
-                    <p className="text-red-700">{analysisError}</p>
+                    <div className="flex items-center space-x-3 px-2 py-2">
+                      <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent animate-spin rounded-full"/>
+                      <span className="text-gray-600 font-medium text-sm">正在分析中...</span>
+                    </div>
                   </Card>
                 )}
 

@@ -290,7 +290,12 @@ export function Sidebar({
       )}
 
       {/* 错误状态 */}
-      {error && <div className="text-sm text-red-500 py-2 px-2">{error}</div>}
+      {error && (
+        <div className="flex items-center space-x-3 px-2 py-2">
+          <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent animate-spin rounded-full"/>
+          <span className="text-gray-500 font-medium text-sm">正在生成中...</span>
+        </div>
+      )}
 
       {/* Markdown导航 */}
       {markdownSections.map(renderMarkdownSection)}
