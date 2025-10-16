@@ -105,16 +105,47 @@
   animation: mermaid-loading 1.5s ease-in-out infinite;
 }
 
-/* 图表特定样式优化 */
+/* 图表特定样式优化 - 确保线条可见 */
 .mermaid-container .node rect,
 .mermaid-container .node circle,
 .mermaid-container .node ellipse,
 .mermaid-container .node polygon {
-  stroke-width: 1px;
+  stroke-width: 2px;
+  stroke: #333333 !important;
 }
 
 .mermaid-container .edgePath path {
-  stroke-width: 1.5px;
+  stroke-width: 2px;
+  stroke: #333333 !important;
+  fill: none;
+}
+
+/* 确保所有连接线都可见 */
+.mermaid-container .flowchart-link,
+.mermaid-container .messageLine0,
+.mermaid-container .messageLine1,
+.mermaid-container .messageLine2,
+.mermaid-container .messageLine3 {
+  stroke: #333333 !important;
+  stroke-width: 2px !important;
+  fill: none !important;
+}
+
+/* 确保箭头可见 */
+.mermaid-container .arrowheadPath {
+  fill: #333333 !important;
+  stroke: #333333 !important;
+}
+
+/* 确保节点边框可见 */
+.mermaid-container .node rect,
+.mermaid-container .node circle,
+.mermaid-container .node ellipse,
+.mermaid-container .node polygon,
+.mermaid-container .actor,
+.mermaid-container .actorBox {
+  stroke: #333333 !important;
+  stroke-width: 2px !important;
 }
 
 .mermaid-container .edgeLabel {

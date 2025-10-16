@@ -17,8 +17,8 @@ import { Badge } from "./ui/badge";
 import { api } from "../services/api";
 import { findFileInTree, FileNode, normalizePath } from "../utils/fileTree";
 import { MermaidBlock } from "./MermaidBlock";
-import MermaidDiagram from "./MermaidDiagram";
-import "./MermaidDiagram.css";
+// import MermaidDiagram from "./MermaidDiagram";
+// import "./MermaidDiagram.css";
 
 interface TaskStatistics {
   code_lines: number;
