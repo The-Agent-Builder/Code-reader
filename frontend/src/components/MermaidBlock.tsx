@@ -62,9 +62,10 @@ const initializeMermaid = () => {
 
 interface MermaidBlockProps {
   chart: string;
+  zoomingEnabled?: boolean;
 }
 
-export function MermaidBlock({ chart }: MermaidBlockProps) {
+export function MermaidBlock({ chart, zoomingEnabled = false }: MermaidBlockProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const renderId = useMemo(() => `mermaid-${Math.random().toString(36).slice(2)}`, []);
@@ -162,7 +163,7 @@ export function MermaidBlock({ chart }: MermaidBlockProps) {
           if (!isCancelled && containerRef.current) {
             containerRef.current.innerHTML = `<pre class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto mb-4 text-sm font-mono">${chart}</pre>`;
           }
-          console.error("Mermaid 渲染失败", error);
+          // Mermaid 渲染失败
         } finally {
           setIsLoading(false);
         }
@@ -177,12 +178,69 @@ export function MermaidBlock({ chart }: MermaidBlockProps) {
     };
   }, [chart, renderId, isInView, hasRendered, cachedChart]);
 
+  // Initialize pan-zoom functionality when SVG is rendered
+  useEffect(() => {
+    if (hasRendered && zoomingEnabled && containerRef.current) {
+      const initializePanZoom = async () => {
+        // 等待 SVG 元素完全渲染
+        const waitForSvg = () => {
+          return new Promise<SVGElement | null>((resolve) => {
+            const checkSvg = () => {
+              const svgElement = containerRef.current?.querySelector("svg");
+              if (svgElement && svgElement.children.length > 0) {
+                resolve(svgElement);
+              } else {
+                setTimeout(checkSvg, 50);
+              }
+            };
+            checkSvg();
+          });
+        };
+
+        try {
+          const svgElement = await waitForSvg();
+          if (svgElement) {
+            // Remove any max-width constraints
+            svgElement.style.maxWidth = "none";
+            svgElement.style.width = "100%";
+            svgElement.style.height = "100%";
+
+            // Dynamically import svg-pan-zoom only when needed in the browser
+            const svgPanZoom = (await import("svg-pan-zoom")).default;
+
+            svgPanZoom(svgElement, {
+              zoomEnabled: true,
+              controlIconsEnabled: false,
+              fit: true,
+              center: true,
+              minZoom: 0.1,
+              maxZoom: 10,
+              zoomScaleSensitivity: 0.3,
+            });
+            
+            // svg-pan-zoom initialized successfully
+          }
+        } catch (error) {
+          // Failed to load svg-pan-zoom
+        }
+      };
+
+      // Wait for the SVG to be rendered
+      setTimeout(() => {
+        void initializePanZoom();
+      }, 200);
+    }
+  }, [hasRendered, zoomingEnabled]);
+
   return (
     <div 
       ref={inViewRef} 
       className="mermaid-wrapper"
       style={{ minHeight: isLoading ? "100px" : "auto" }}
     >
+      <div
+        className={`w-full max-w-full ${zoomingEnabled ? "h-[600px] p-4" : ""}`}
+      >
       {isLoading && (
         <div className="flex items-center justify-center space-x-2 text-gray-500 py-4">
           <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500" />
@@ -194,7 +252,12 @@ export function MermaidBlock({ chart }: MermaidBlockProps) {
           📊 Mermaid 图表 (滚动到此处加载)
         </div>
       )}
-      <div ref={containerRef} className="mermaid" aria-live="polite" />
+      <div 
+        ref={containerRef} 
+        className={`mermaid ${zoomingEnabled ? "h-full rounded-lg border-2 border-black" : ""}`} 
+        aria-live="polite" 
+      />
+      </div>
     </div>
   );
 }

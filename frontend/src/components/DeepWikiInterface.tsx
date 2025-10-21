@@ -18,6 +18,7 @@ import {
     findFileFullPath,
 } from "../utils/fileTree";
 import { useProject } from "../contexts/ProjectContext";
+import { preprocessMermaidInMarkdown, hasMermaidBlocks } from "../utils/mermaidPreprocessor";
 
 interface DeepWikiInterfaceProps {
     onBackToUpload: () => void;
@@ -64,69 +65,49 @@ export default function DeepWikiInterface({
         module_count: number;
     } | null>(null);
     const [currentTaskId, setCurrentTaskId] = useState<number | null>(null);
+    const [processedReadmeContent, setProcessedReadmeContent] = useState<string>("");
+    const [isProcessingMermaid, setIsProcessingMermaid] = useState(false);
 
     // 使用 useCallback 优化，避免每次渲染都创建新函数
     const handleFileSelect = useCallback((filePath: string) => {
-        console.log("File selected:", filePath);
-        console.log("Available files in map:", Array.from(fileDataMap.keys()));
-
         setSelectedFile(filePath);
         setViewMode("code");
 
         // 从文件数据映射中获取对应的file_analysis_id
         const fileData = fileDataMap.get(filePath);
-        console.log("File data found:", fileData);
 
         if (fileData && fileData.id) {
             setSelectedFileAnalysisId(fileData.id);
-            console.log(
-                "Selected file analysis ID:",
-                fileData.id,
-                "for file:",
-                filePath
-            );
         } else {
             setSelectedFileAnalysisId(undefined);
-            console.warn("No file analysis ID found for file:", filePath);
-            console.warn("File data map contents:", fileDataMap);
         }
     }, [fileDataMap]);
 
     // 新增：处理文件高亮定位 - 使用 useCallback 优化
     const handleFileHighlight = useCallback((filePath: string) => {
-        console.log("File highlight requested:", filePath);
-
         // 标准化文件路径：URL解码 + 路径分隔符标准化
         const normalizedPath = normalizePath(filePath);
-        console.log("Normalized path:", normalizedPath);
 
         // 调试：打印文件树结构
-        console.log("=== File Tree Structure ===");
         debugPrintFileTree(fileTree);
 
         // 调试：查找所有匹配的文件
         const isFileNameOnly = !normalizedPath.includes("/");
         if (isFileNameOnly) {
-            console.log(`=== Searching for file name: "${normalizedPath}" ===`);
             const matches = findAllFilesByName(fileTree, normalizedPath);
-            console.log("Found matches:", matches);
         }
 
         // 检查文件是否存在于文件树中
         const fileExists = findFileInTree(fileTree, normalizedPath);
-        console.log("File exists:", fileExists);
 
         if (!fileExists) {
-            console.warn("File not found in tree:", normalizedPath);
             return;
         }
 
         // 获取文件的完整路径（对于只有文件名的情况很重要）
         const fullPath = findFileFullPath(fileTree, normalizedPath);
-        console.log("Full path found:", fullPath);
 
         if (!fullPath) {
-            console.warn("Could not determine full path for:", normalizedPath);
             return;
         }
 
@@ -140,16 +121,6 @@ export default function DeepWikiInterface({
         const pathsToExpand = getPathsToExpand(fileTree, fullPath);
         setExpandedPaths(pathsToExpand);
 
-        console.log(
-            "File highlighted:",
-            fullPath,
-            "Original path:",
-            filePath,
-            "Normalized path:",
-            normalizedPath,
-            "Paths to expand:",
-            pathsToExpand
-        );
 
         // 保持高亮状态，不自动清除
         // setTimeout(() => {
@@ -171,11 +142,9 @@ export default function DeepWikiInterface({
 
         try {
             // 1. 通过full_name获取仓库信息
-            console.log("Loading repository data for full_name:", fullNameHash);
             const repoResponse = await api.getRepositoryByFullName(
                 fullNameHash
             );
-            console.log("Repository API response:", repoResponse);
 
             if (repoResponse.status !== "success" || !repoResponse.repository) {
                 throw new Error(
@@ -184,27 +153,20 @@ export default function DeepWikiInterface({
             }
 
             const repository = repoResponse.repository;
-            console.log("Repository data:", repository);
             setRepositoryInfo(repository);
             // 同时设置到全局Context中，供TopNavigation使用
             setCurrentRepository(repository);
 
             // 2. 获取该仓库的分析任务列表
-            console.log(
-                "Loading analysis tasks for repository ID:",
-                repository.id
-            );
             const tasksResponse = await api.getAnalysisTasksByRepositoryId(
                 repository.id
             );
-            console.log("Tasks API response:", tasksResponse);
 
             if (
                 tasksResponse.status !== "success" ||
                 !tasksResponse.tasks ||
                 tasksResponse.tasks.length === 0
             ) {
-                console.warn("No analysis tasks found for this repository");
                 setIsLoading(false);
                 return;
             }
@@ -217,8 +179,6 @@ export default function DeepWikiInterface({
             );
             const latestTask = sortedTasks[0]; // 取排序最前面的任务
 
-            console.log("Latest task found:", latestTask);
-            console.log("Loading files for task ID:", latestTask.id);
 
             // 4. 设置当前任务ID
             setCurrentTaskId(latestTask.id);
@@ -230,11 +190,9 @@ export default function DeepWikiInterface({
                 module_count: (latestTask as any).module_count || 0,
             };
             setTaskStatistics(statistics);
-            console.log("Task statistics:", statistics);
 
             // 4. 获取该任务的文件列表
             const filesResponse = await api.getFilesByTaskId(latestTask.id);
-            console.log("Files API response:", filesResponse);
 
             if (filesResponse.status === "success") {
                 if (
@@ -253,30 +211,52 @@ export default function DeepWikiInterface({
                         dataMap.set(normalizedPath, file);
                     });
                     setFileDataMap(dataMap);
-                    console.log("File data map built:", dataMap);
 
                     // 6. 构建文件树
-                    console.log(
-                        "Building file tree from files:",
-                        filesResponse.files
-                    );
                     const tree = buildFileTree(filesResponse.files);
                     sortFileTree(tree);
                     setFileTree(tree);
-                    console.log("File tree built:", tree);
+
+                    // 7. 获取README内容并进行mermaid预处理
+                    try {
+                        const readmeResponse = await api.getTaskReadmeByTaskId(latestTask.id);
+                        
+                        if (readmeResponse.status === "success" && readmeResponse.readme) {
+                            const rawContent = readmeResponse.readme.content;
+
+                            // 检查是否包含mermaid代码块
+                            if (hasMermaidBlocks(rawContent)) {
+                                setIsProcessingMermaid(true);
+                                
+                                try {
+                                    const processedContent = await preprocessMermaidInMarkdown(rawContent);
+                                    setProcessedReadmeContent(processedContent);
+                                } catch (mermaidError) {
+                                    // 如果mermaid预处理失败，使用原始内容
+                                    setProcessedReadmeContent(rawContent);
+                                } finally {
+                                    setIsProcessingMermaid(false);
+                                }
+                            } else {
+                                // 没有mermaid代码块，直接使用原始内容
+                                setProcessedReadmeContent(rawContent);
+                            }
+                        } else {
+                            setProcessedReadmeContent("");
+                        }
+                    } catch (readmeError) {
+                        setProcessedReadmeContent("");
+                    }
                 } else {
-                    console.warn("No files found for task:", latestTask.id);
                     setFileTree(null);
                     setFileDataMap(new Map());
                 }
             } else {
-                console.error("Files API returned error:", filesResponse);
                 throw new Error(
                     filesResponse.message || "Failed to fetch files"
                 );
             }
         } catch (err) {
-            console.error("Error loading project data:", err);
             setError(
                 err instanceof Error
                     ? err.message
@@ -332,6 +312,8 @@ export default function DeepWikiInterface({
                             projectName={repositoryInfo?.name || fullNameHash}
                             taskStatistics={taskStatistics}
                             taskId={currentTaskId}
+                            processedReadmeContent={processedReadmeContent}
+                            isProcessingMermaid={isProcessingMermaid}
                         />
                     ) : (
                         selectedFile && (

@@ -3,6 +3,7 @@ import { RouterProvider } from "react-router-dom";
 import { router } from "./router/index.tsx";
 import { ProjectProvider, AuthProvider } from "./contexts/ProjectContext.tsx";
 import "./index.css";
+import "./styles/svg-pan-zoom.css";
 
 createRoot(document.getElementById("root")!).render(
     <AuthProvider>

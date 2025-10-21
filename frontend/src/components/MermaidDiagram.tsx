@@ -3,6 +3,7 @@ import React, { useEffect, useState, memo, useCallback, useRef } from 'react';
 interface MermaidDiagramProps {
   chart: string;
   className?: string;
+  zoomingEnabled?: boolean;
 }
 
 // 全局 Mermaid 实例管理
@@ -64,7 +65,7 @@ class MermaidManager {
       this.initialized = true;
       return this.mermaid;
     } catch (error) {
-      console.error('Failed to load mermaid:', error);
+      // Failed to load mermaid
       throw error;
     }
   }
@@ -72,7 +73,7 @@ class MermaidManager {
 
 const mermaidManager = MermaidManager.getInstance();
 
-const MermaidDiagram: React.FC<MermaidDiagramProps> = memo(({ chart, className = '' }) => {
+const MermaidDiagram: React.FC<MermaidDiagramProps> = memo(({ chart, className = '', zoomingEnabled = false }) => {
   const [svgContent, setSvgContent] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -80,6 +81,7 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = memo(({ chart, className =
   const [inView, setInView] = useState(false);
 
   const observerRef = useRef<IntersectionObserver | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const inViewRef = useCallback((node: HTMLDivElement | null) => {
     if (observerRef.current) {
@@ -180,7 +182,7 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = memo(({ chart, className =
             setRenderedChart(chart); // 记录已渲染的图表内容
           });
         } catch (err) {
-          console.error('Mermaid rendering error:', err);
+          // Mermaid rendering error
           setError(err instanceof Error ? err.message : 'Failed to render diagram');
         } finally {
           setIsLoading(false);
@@ -192,6 +194,60 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = memo(({ chart, className =
 
     return () => clearTimeout(timeoutId);
   }, [inView, chart, hasRendered]);
+
+  // Initialize pan-zoom functionality when SVG is rendered
+  useEffect(() => {
+    if (svgContent && zoomingEnabled && containerRef.current) {
+      const initializePanZoom = async () => {
+        // 等待 SVG 元素完全渲染
+        const waitForSvg = () => {
+          return new Promise<SVGElement | null>((resolve) => {
+            const checkSvg = () => {
+              const svgElement = containerRef.current?.querySelector("svg");
+              if (svgElement && svgElement.children.length > 0) {
+                resolve(svgElement);
+              } else {
+                setTimeout(checkSvg, 50);
+              }
+            };
+            checkSvg();
+          });
+        };
+
+        try {
+          const svgElement = await waitForSvg();
+          if (svgElement) {
+            // Remove any max-width constraints
+            svgElement.style.maxWidth = "none";
+            svgElement.style.width = "100%";
+            svgElement.style.height = "100%";
+
+            // Dynamically import svg-pan-zoom only when needed in the browser
+            const svgPanZoom = (await import("svg-pan-zoom")).default;
+
+            svgPanZoom(svgElement, {
+              zoomEnabled: true,
+              controlIconsEnabled: false,
+              fit: true,
+              center: true,
+              minZoom: 0.1,
+              maxZoom: 10,
+              zoomScaleSensitivity: 0.3,
+            });
+            
+            // svg-pan-zoom initialized successfully
+          }
+        } catch (error) {
+          // Failed to load svg-pan-zoom
+        }
+      };
+
+      // Wait for the SVG to be rendered
+      setTimeout(() => {
+        void initializePanZoom();
+      }, 200);
+    }
+  }, [svgContent, zoomingEnabled]);
 
   return (
     <div
@@ -207,6 +263,10 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = memo(({ chart, className =
         padding: 0,
       }}
     >
+      <div
+        ref={containerRef}
+        className={`w-full max-w-full ${zoomingEnabled ? "h-[600px] p-4" : ""}`}
+      >
       {isLoading && (
         <div className="flex items-center space-x-2 text-gray-500">
           <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
@@ -228,9 +288,13 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = memo(({ chart, className =
 
       {svgContent && !error && (
         <div
-          className="mermaid-svg-container w-full"
-          dangerouslySetInnerHTML={{ __html: svgContent }}
-        />
+          className={`relative group ${zoomingEnabled ? "h-full rounded-lg border-2 border-black" : ""}`}
+        >
+          <div
+            className={`flex justify-center overflow-auto text-center my-2 cursor-pointer hover:shadow-md transition-shadow duration-200 rounded-md ${zoomingEnabled ? "h-full" : ""}`}
+            dangerouslySetInnerHTML={{ __html: svgContent }}
+          />
+        </div>
       )}
 
       {!inView && !isLoading && !error && !svgContent && !hasRendered && (
@@ -238,6 +302,7 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = memo(({ chart, className =
           📊 Mermaid 图表 (滚动到此处加载)
         </div>
       )}
+      </div>
     </div>
   );
 });

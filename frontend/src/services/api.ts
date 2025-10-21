@@ -4,7 +4,8 @@
 
 // 在 Docker 容器中，通过 Nginx 反向代理访问后端 API
 // 使用当前域名，避免跨域问题
-const API_BASE_URL = window.location.origin;
+// const API_BASE_URL = window.location.origin;
+const API_BASE_URL = "http://localhost:8000";
 
 // 类型定义
 export interface RepositoryInfo {

@@ -149,19 +149,19 @@ export function Sidebar({
     setError(null);
 
     try {
-      console.log("Loading README for task:", taskId);
+      // Loading README for task
       const response = await api.getTaskReadmeByTaskId(taskId);
 
       if (response.status === "success" && response.readme) {
         const sections = parseMarkdownHeadings(response.readme.content);
         setMarkdownSections(sections);
-        console.log("Parsed markdown sections:", sections);
+        // Parsed markdown sections
       } else {
         setError("未找到README文档");
         setMarkdownSections([]);
       }
     } catch (err) {
-      console.error("Error loading README:", err);
+      // Error loading README
       setError("加载README文档失败");
       setMarkdownSections([]);
     } finally {

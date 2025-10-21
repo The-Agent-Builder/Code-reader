@@ -53,6 +53,7 @@
     "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1",
     "sonner": "^2.0.3",
+    "svg-pan-zoom": "^3.6.2",
     "tailwind-merge": "*",
     "vaul": "^1.1.2"
   },
