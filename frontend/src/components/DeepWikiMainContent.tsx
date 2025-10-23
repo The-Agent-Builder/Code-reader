@@ -1,12 +1,14 @@
 import React, {
   useState,
   useEffect,
+  useLayoutEffect,
   Children,
   isValidElement,
   memo,
   useMemo,
   useRef,
   useCallback,
+  Component,
 } from "react";
 import type { ReactNode } from "react";
 import ReactDOMServer from "react-dom/server";
@@ -19,12 +21,33 @@ import { findFileInTree, FileNode, normalizePath } from "../utils/fileTree";
 import { MermaidBlock } from "./MermaidBlock";
 import { SvgWithFullscreen } from "./SvgWithFullscreen";
 import { useSvgPanZoom } from "../hooks/useSvgPanZoom";
+import { PaginatedContent, getContentBySectionId } from "../utils/markdownPagination";
+import { preprocessMermaidInMarkdown, hasMermaidBlocks } from "../utils/mermaidPreprocessor";
 
 interface TaskStatistics {
   code_lines: number;
   total_files: number;
   module_count: number;
 }
+
+// 简化的错误处理组件
+const MarkdownErrorBoundary = ({ children }: { children: ReactNode }) => {
+  try {
+    return <>{children}</>;
+  } catch (error) {
+    console.error("Markdown rendering error:", error);
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <h3 className="text-red-800 font-medium mb-2">内容渲染错误</h3>
+          <p className="text-red-600 text-sm">
+            抱歉，内容渲染时出现了错误。请尝试刷新页面或联系管理员。
+          </p>
+        </div>
+      </div>
+    );
+  }
+};
 
 interface MainContentProps {
   activeSection: string;
@@ -36,7 +59,7 @@ interface MainContentProps {
   taskStatistics?: TaskStatistics | null;
   taskId?: number | null;
   processedReadmeContent?: string; // 新增：预处理后的README内容
-  isProcessingMermaid?: boolean; // 新增：是否正在处理mermaid
+  paginatedContent?: PaginatedContent[]; // 新增：分页后的内容
 }
 
 // 生成标题ID（与Sidebar中的逻辑保持一致）
@@ -46,6 +69,18 @@ const generateSectionId = (title: string): string => {
     .replace(/[^a-z0-9\u4e00-\u9fa5\s-]/g, "") // 保留连字符
     .replace(/\s+/g, "-")
     .replace(/^-+|-+$/g, ""); // 移除开头和结尾的连字符
+};
+
+// 生成稳定的key
+const generateStableKey = (content: string, type: string): string => {
+  // 使用内容的简单哈希作为key的基础
+  let hash = 0;
+  for (let i = 0; i < content.length; i++) {
+    const char = content.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // 转换为32位整数
+  }
+  return `${type}-${Math.abs(hash).toString(36)}`;
 };
 
 const getNodeText = (node: ReactNode): string => {
@@ -96,7 +131,6 @@ const processHeadingChildren = (children: ReactNode) => {
 const createMarkdownComponents = (
   onFileHighlight: (file: string) => void,
   onSectionChange: (section: string) => void,
-  scrollToSection: (sectionId: string) => void,
   fileTree: FileNode | null
 ) => ({
   details: ({ children, ...props }: any) => (
@@ -195,7 +229,6 @@ const createMarkdownComponents = (
             event.preventDefault();
             if (sectionId) {
               onSectionChange(sectionId);
-              scrollToSection(sectionId);
             }
           }}
           {...props}
@@ -237,21 +270,32 @@ const createMarkdownComponents = (
     // 检查是否是已经预处理过的SVG内容
     const content = String(children);
     if (content.includes('<svg') && content.includes('</svg>')) {
+      // 使用更安全的方式渲染SVG
       return (
-        <SvgWithFullscreen 
-          svgContent={content}
-          className="mermaid-svg-container my-4"
-        />
+        <div key={generateStableKey(content, 'svg')} className="mermaid-svg-container my-4">
+          <SvgWithFullscreen 
+            svgContent={content}
+            className="w-full"
+          />
+        </div>
       );
     }
     
     if (language === "mermaid") {
-      return <MermaidBlock chart={String(children)} zoomingEnabled={true} />;
+      return (
+        <div key={generateStableKey(String(children), 'mermaid')}>
+          <MermaidBlock 
+            chart={String(children)} 
+            zoomingEnabled={true} 
+          />
+        </div>
+      );
     }
 
     const isInline = !className;
     return (
       <code
+        key={`code-${Math.random().toString(36).substring(2, 9)}`}
         className={`${className} ${isInline
             ? "bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono text-gray-800"
             : ""
@@ -270,10 +314,12 @@ const createMarkdownComponents = (
     const content = String((child as any)?.props?.children ?? []);
     if (content.includes('<svg') && content.includes('</svg>')) {
       return (
-        <SvgWithFullscreen 
-          svgContent={content}
-          className="mermaid-svg-container my-4"
-        />
+        <div key={generateStableKey(content, 'svg-pre')} className="mermaid-svg-container my-4">
+          <SvgWithFullscreen 
+            svgContent={content}
+            className="w-full"
+          />
+        </div>
       );
     }
 
@@ -282,20 +328,30 @@ const createMarkdownComponents = (
       // 将 React SVG 组件转换为字符串
       const svgString = ReactDOMServer.renderToStaticMarkup(child);
       return (
-        <SvgWithFullscreen 
-          svgContent={svgString}
-          className="mermaid-svg-container my-4"
-        />
+        <div key={generateStableKey(svgString, 'svg-react')} className="mermaid-svg-container my-4">
+          <SvgWithFullscreen 
+            svgContent={svgString}
+            className="w-full"
+          />
+        </div>
       );
     }
 
     if (childClassName?.includes("language-mermaid")) {
       const chart = (child as any)?.props?.children ?? [];
-      return <MermaidBlock chart={String(chart)} zoomingEnabled={true} />;
+      return (
+        <div key={generateStableKey(String(chart), 'mermaid-pre')}>
+          <MermaidBlock 
+            chart={String(chart)} 
+            zoomingEnabled={true} 
+          />
+        </div>
+      );
     }
 
     return (
       <pre
+        key={`pre-${Math.random().toString(36).substring(2, 9)}`}
         className={`bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto mb-4 text-sm font-mono ${className ?? ""}`.trim()}
         {...props}
       >
@@ -346,19 +402,49 @@ const MainContentComponent = ({
   taskStatistics,
   taskId,
   processedReadmeContent,
-  isProcessingMermaid,
+  paginatedContent,
 }: MainContentProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isProcessingMermaid, setIsProcessingMermaid] = useState(false);
+  const [processedContent, setProcessedContent] = useState<string>("");
 
-  // 使用 ref 来标记是否正在执行程序触发的滚动
-  const isScrollingProgrammatically = useRef(false);
-  // 节流定时器
-  const scrollThrottleTimer = useRef<number | null>(null);
-  
   // SVG 缩放功能
   const contentRef = useRef<HTMLDivElement>(null);
-  useSvgPanZoom(contentRef, processedReadmeContent || null, true);
+  
+  // 滚动到顶部的函数
+  const scrollToTop = useCallback(() => {
+    // 首先尝试通过ref访问
+    if (contentRef.current) {
+      const scrollContainer = contentRef.current.closest('main');
+      if (scrollContainer) {
+        scrollContainer.scrollTop = 0;
+        scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+    }
+    
+    // 如果ref方法失败，使用DOM查询
+    const scrollContainer = document.querySelector("main");
+    if (scrollContainer) {
+      scrollContainer.scrollTop = 0;
+      scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, []);
+  // 获取当前章节的内容用于SVG缩放
+  const currentContentForSvg = useMemo(() => {
+    if (activeSection === "overview") return null;
+    
+    if (paginatedContent && paginatedContent.length > 0) {
+      const sectionContent = getContentBySectionId(paginatedContent, activeSection);
+      return sectionContent || null;
+    }
+    
+    return processedReadmeContent || null;
+  }, [paginatedContent, processedReadmeContent, activeSection]);
+  
+  useSvgPanZoom(contentRef, currentContentForSvg, true);
+
 
   // 当taskId改变时重置状态
   useEffect(() => {
@@ -368,108 +454,101 @@ const MainContentComponent = ({
     }
   }, [taskId]);
 
-  // 滚动到指定的标题位置 - 使用 instant 以提高性能
-  const scrollToSection = useCallback((sectionId: string) => {
-    const element = document.getElementById(sectionId);
-    if (element) {
-      // 标记为程序触发的滚动
-      isScrollingProgrammatically.current = true;
-
-      // 使用 instant 滚动，避免平滑滚动在大型文档上的性能问题
-      element.scrollIntoView({
-        behavior: "instant",
-        block: "start",
-      });
-
-      // 缩短重置时间到 20ms，加快响应
-      setTimeout(() => {
-        isScrollingProgrammatically.current = false;
-      }, 20);
-    }
-  }, []);
-
-  // 当activeSection改变时，滚动到对应位置
+  // 当activeSection改变时，滚动到顶部
   useEffect(() => {
-    if (activeSection && activeSection !== "overview" && processedReadmeContent) {
-      // 使用 setTimeout(0) 确保 DOM 更新完成
+    if (activeSection && (processedReadmeContent || paginatedContent)) {
+      // 使用 setTimeout 确保 DOM 更新完成
       setTimeout(() => {
-        scrollToSection(activeSection);
-      }, 0);
+        scrollToTop();
+      }, 100); // 增加延迟确保DOM完全更新
     }
-  }, [activeSection, processedReadmeContent, scrollToSection]);
+  }, [activeSection, processedReadmeContent, paginatedContent, scrollToTop]);
 
-  // 监听滚动事件，同步高亮左侧导航（带节流优化）
+  // 强制清理DOM，防止SVG组件冲突
+  useLayoutEffect(() => {
+    // 清理可能残留的SVG元素
+    const svgElements = document.querySelectorAll('.mermaid-svg-container svg');
+    svgElements.forEach(svg => {
+      try {
+        if (svg.parentNode) {
+          svg.parentNode.removeChild(svg);
+        }
+      } catch (error) {
+        // 忽略清理错误
+        console.warn('SVG cleanup warning:', error);
+      }
+    });
+  }, [activeSection]);
+
+  // 预处理 mermaid 代码块
   useEffect(() => {
-    if (!processedReadmeContent || activeSection === "overview") return;
-
-    // 获取滚动容器
-    const scrollContainer = document.querySelector("main");
-    if (!scrollContainer) return;
-
-    // 节流处理的滚动事件 - 减少事件处理频率
-    const handleScroll = () => {
-      // 如果是程序触发的滚动，跳过处理避免循环更新
-      if (isScrollingProgrammatically.current) {
+    const processMermaidContent = async () => {
+      // 先重置状态，避免DOM不一致
+      setProcessedContent("");
+      setIsProcessingMermaid(false);
+      
+      if (activeSection === "overview") {
         return;
       }
 
-      // 清除之前的定时器
-      if (scrollThrottleTimer.current !== null) {
-        window.clearTimeout(scrollThrottleTimer.current);
+      // 添加延迟，确保DOM完全清理
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // 获取当前章节的内容
+      let currentContent = "";
+      if (paginatedContent && paginatedContent.length > 0) {
+        const sectionContent = getContentBySectionId(paginatedContent, activeSection);
+        if (sectionContent) {
+          currentContent = sectionContent;
+        } else {
+          currentContent = paginatedContent[0]?.content || "";
+        }
+      } else if (processedReadmeContent) {
+        currentContent = processedReadmeContent;
       }
 
-      // 设置节流定时器 - 100ms 内只处理一次，更快的响应
-      scrollThrottleTimer.current = window.setTimeout(() => {
-        // 获取所有标题元素
-        const headings = document.querySelectorAll("h1[id], h2[id]");
-        if (headings.length === 0) return;
+      if (!currentContent) {
+        return;
+      }
 
-        const containerRect = scrollContainer.getBoundingClientRect();
-        let currentSection = "";
-
-        // 找到当前可见的标题
-        for (let i = headings.length - 1; i >= 0; i--) {
-          const heading = headings[i] as HTMLElement;
-          const rect = heading.getBoundingClientRect();
-
-          // 计算标题相对于滚动容器的位置
-          const relativeTop = rect.top - containerRect.top;
-
-          // 如果标题在视口上方或刚好在视口顶部附近
-          if (relativeTop <= 100) {
-            currentSection = heading.id;
-            break;
-          }
+      // 检查是否包含 mermaid 代码块
+      if (hasMermaidBlocks(currentContent)) {
+        setIsProcessingMermaid(true);
+        try {
+          const processed = await preprocessMermaidInMarkdown(currentContent);
+          setProcessedContent(processed);
+        } catch (error) {
+          console.error("Failed to process mermaid content:", error);
+          setProcessedContent(currentContent); // 如果处理失败，使用原始内容
+        } finally {
+          setIsProcessingMermaid(false);
         }
-
-        // 如果找到了当前section且与activeSection不同，则更新
-        if (currentSection && currentSection !== activeSection) {
-          onSectionChange(currentSection);
-        }
-      }, 100); // 节流延迟 100ms，更快的响应
-    };
-
-    // 添加滚动监听
-    scrollContainer.addEventListener("scroll", handleScroll, { passive: true });
-
-    // 清理函数
-    return () => {
-      scrollContainer.removeEventListener("scroll", handleScroll);
-      if (scrollThrottleTimer.current !== null) {
-        window.clearTimeout(scrollThrottleTimer.current);
+      } else {
+        setProcessedContent(currentContent);
+        setIsProcessingMermaid(false);
       }
     };
-  }, [processedReadmeContent, activeSection, onSectionChange]);
+
+    processMermaidContent();
+  }, [activeSection, paginatedContent, processedReadmeContent]);
+
+
+
 
   // 使用 useMemo 缓存 markdown 组件配置，避免每次渲染都重新创建
   const markdownComponents = useMemo(
-    () => createMarkdownComponents(onFileHighlight, onSectionChange, scrollToSection, fileTree),
-    [onFileHighlight, onSectionChange, scrollToSection, fileTree]
+    () => createMarkdownComponents(onFileHighlight, onSectionChange, fileTree),
+    [onFileHighlight, onSectionChange, fileTree]
   );
 
   // 使用 useMemo 缓存 ReactMarkdown 的渲染结果，避免重复解析
   const renderedMarkdown = useMemo(() => {
-    if (!processedReadmeContent || activeSection === "overview") return null;
+    if (activeSection === "overview") return null;
+
+    // 使用预处理后的内容
+    const currentContent = processedContent;
+
+    if (!currentContent) return null;
 
     return (
       <div className="space-y-6 p-6">
@@ -481,31 +560,28 @@ const MainContentComponent = ({
 
         {isProcessingMermaid && (
           <div className="flex items-center justify-center py-8">
-            <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse delay-75"></div>
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse delay-150"></div>
-              <span className="text-gray-500 ml-2">正在处理图表...</span>
-            </div>
+            <div className="text-gray-500">正在转换图表...</div>
           </div>
         )}
 
         {error && <div className="text-red-500 py-4">{error}</div>}
 
-        {!isLoading && !isProcessingMermaid && !error && (
-          <div className="markdown-content max-w-none">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeRaw]}
-              components={markdownComponents}
-            >
-              {processedReadmeContent}
-            </ReactMarkdown>
+        {!isLoading && !error && !isProcessingMermaid && (
+          <div key={`content-${activeSection}`} className="markdown-content max-w-none">
+            <MarkdownErrorBoundary>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeRaw]}
+                components={markdownComponents}
+              >
+                {currentContent}
+              </ReactMarkdown>
+            </MarkdownErrorBoundary>
           </div>
         )}
       </div>
     );
-  }, [processedReadmeContent, markdownComponents, isLoading, isProcessingMermaid, error, activeSection]);
+  }, [processedContent, markdownComponents, isLoading, error, isProcessingMermaid, activeSection]);
 
   const renderContent = () => {
     // 如果是项目概览，显示固定的概览内容
@@ -554,8 +630,8 @@ const MainContentComponent = ({
       );
     }
 
-    // 如果有markdown内容，显示完整的文档（使用缓存的渲染结果）
-    if (processedReadmeContent && activeSection !== "overview") {
+    // 如果有markdown内容，显示对应的章节内容（使用缓存的渲染结果）
+    if ((processedReadmeContent || paginatedContent) && activeSection !== "overview") {
       return renderedMarkdown;
     }
 
@@ -1124,7 +1200,7 @@ export const MainContent = memo(MainContentComponent, (prevProps, nextProps) => 
   if (prevProps.fileTree !== nextProps.fileTree) return false;
   if (prevProps.activeSection !== nextProps.activeSection) return false; // activeSection 变化时需要重新渲染以触发 useEffect
   if (prevProps.processedReadmeContent !== nextProps.processedReadmeContent) return false;
-  if (prevProps.isProcessingMermaid !== nextProps.isProcessingMermaid) return false;
+  if (prevProps.paginatedContent !== nextProps.paginatedContent) return false;
 
   // taskStatistics 的深度比较
   if (

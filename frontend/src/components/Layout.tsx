@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import TopNavigation from "./TopNavigation";
 import { useProject } from "../contexts/ProjectContext";
+import MermaidPreloader from "../utils/mermaidPreloader";
 
 interface ProjectVersion {
   id: string;
@@ -54,6 +55,12 @@ export default function Layout() {
       isCurrent: false,
     },
   ]);
+
+  // 预加载 Mermaid 库
+  useEffect(() => {
+    console.log('📱 Layout.tsx: 开始预加载 Mermaid');
+    MermaidPreloader.preload();
+  }, []);
 
   // 实时更新分析项目数 - 模拟平台活跃度
   useEffect(() => {

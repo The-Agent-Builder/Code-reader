@@ -18,7 +18,7 @@ import {
     findFileFullPath,
 } from "../utils/fileTree";
 import { useProject } from "../contexts/ProjectContext";
-import { preprocessMermaidInMarkdown, hasMermaidBlocks } from "../utils/mermaidPreprocessor";
+import { paginateMarkdownContent, PaginatedContent } from "../utils/markdownPagination";
 
 interface DeepWikiInterfaceProps {
     onBackToUpload: () => void;
@@ -66,7 +66,7 @@ export default function DeepWikiInterface({
     } | null>(null);
     const [currentTaskId, setCurrentTaskId] = useState<number | null>(null);
     const [processedReadmeContent, setProcessedReadmeContent] = useState<string>("");
-    const [isProcessingMermaid, setIsProcessingMermaid] = useState(false);
+    const [paginatedContent, setPaginatedContent] = useState<PaginatedContent[]>([]);
 
     // 使用 useCallback 优化，避免每次渲染都创建新函数
     const handleFileSelect = useCallback((filePath: string) => {
@@ -217,35 +217,24 @@ export default function DeepWikiInterface({
                     sortFileTree(tree);
                     setFileTree(tree);
 
-                    // 7. 获取README内容并进行mermaid预处理
+                    // 7. 获取README内容并进行分页处理
                     try {
                         const readmeResponse = await api.getTaskReadmeByTaskId(latestTask.id);
                         
                         if (readmeResponse.status === "success" && readmeResponse.readme) {
                             const rawContent = readmeResponse.readme.content;
-
-                            // 检查是否包含mermaid代码块
-                            if (hasMermaidBlocks(rawContent)) {
-                                setIsProcessingMermaid(true);
-                                
-                                try {
-                                    const processedContent = await preprocessMermaidInMarkdown(rawContent);
-                                    setProcessedReadmeContent(processedContent);
-                                } catch (mermaidError) {
-                                    // 如果mermaid预处理失败，使用原始内容
-                                    setProcessedReadmeContent(rawContent);
-                                } finally {
-                                    setIsProcessingMermaid(false);
-                                }
-                            } else {
-                                // 没有mermaid代码块，直接使用原始内容
-                                setProcessedReadmeContent(rawContent);
-                            }
+                            setProcessedReadmeContent(rawContent);
+                            
+                            // 对内容进行分页处理
+                            const paginated = paginateMarkdownContent(rawContent);
+                            setPaginatedContent(paginated);
                         } else {
                             setProcessedReadmeContent("");
+                            setPaginatedContent([]);
                         }
                     } catch (readmeError) {
                         setProcessedReadmeContent("");
+                        setPaginatedContent([]);
                     }
                 } else {
                     setFileTree(null);
@@ -313,7 +302,7 @@ export default function DeepWikiInterface({
                             taskStatistics={taskStatistics}
                             taskId={currentTaskId}
                             processedReadmeContent={processedReadmeContent}
-                            isProcessingMermaid={isProcessingMermaid}
+                            paginatedContent={paginatedContent}
                         />
                     ) : (
                         selectedFile && (

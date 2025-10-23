@@ -1,65 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import mermaid from "mermaid";
 
-const defaultOptions = {
-  startOnLoad: false,
-  suppressErrorRendering: true, //禁止在 DOM 中插入 'Syntax error' 图
-  securityLevel: "loose",
-  theme: "base",
-  themeVariables: {
-    background: "transparent",
-    mainBkg: "transparent",
-    lineColor: "#333333", // 确保线条颜色足够深
-    primaryBorderColor: "#333333",
-    primaryTextColor: "#1f2937",
-    secondaryColor: "#f8f9fa",
-    tertiaryColor: "#ffffff",
-    // 流程图特定配置
-    flowchart: {
-      nodeBkg: "#f8f9fa",
-      nodeBorder: "#333333",
-      clusterBkg: "#ffffff",
-      clusterBorder: "#333333",
-      defaultLinkColor: "#333333",
-      titleColor: "#1f2937",
-    },
-    // 序列图特定配置
-    sequence: {
-      actorBkg: "#f8f9fa",
-      actorBorder: "#333333",
-      actorTextColor: "#1f2937",
-      actorLineColor: "#333333",
-      signalColor: "#333333",
-      signalTextColor: "#1f2937",
-      labelBoxBkgColor: "#ffffff",
-      labelBoxBorderColor: "#333333",
-      labelTextColor: "#1f2937",
-      loopTextColor: "#1f2937",
-      activationBkgColor: "#e5e7eb",
-      activationBorderColor: "#333333",
-    },
-  },
-  flowchart: {
-    useMaxWidth: true,
-    htmlLabels: true,
-    curve: "basis",
-  },
-  sequence: {
-    useMaxWidth: true,
-    wrap: true,
-  },
-  logLevel: "error",
-};
-
-let mermaidInitialized = false;
-
-const initializeMermaid = () => {
-  if (!mermaidInitialized) {
-    mermaid.initialize(defaultOptions);
-    mermaidInitialized = true;
-  }
-};
-
 interface MermaidBlockProps {
   chart: string;
   zoomingEnabled?: boolean;
@@ -123,7 +64,7 @@ export function MermaidBlock({ chart, zoomingEnabled = false }: MermaidBlockProp
         containerRef.current.innerHTML = "";
 
         try {
-          initializeMermaid();
+          // mermaid 已经在应用启动时初始化，无需重复初始化
 
           // 使用 requestIdleCallback 在浏览器空闲时渲染，避免阻塞主线程
           const renderInIdle = (): Promise<string> => {

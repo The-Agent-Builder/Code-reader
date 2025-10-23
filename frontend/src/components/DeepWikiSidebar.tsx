@@ -46,9 +46,8 @@ const parseMarkdownHeadings = (content: string): MarkdownSection[] => {
       continue;
     }
 
-    // 更严格的标题匹配：确保 # 后面有空格，且不在行首有其他字符
+    // 只处理一级标题：确保 # 后面有空格，且不在行首有其他字符
     const h1Match = line.match(/^# (.+)$/);
-    const h2Match = line.match(/^## (.+)$/);
 
     if (h1Match) {
       const title = h1Match[1].trim();
@@ -67,23 +66,6 @@ const parseMarkdownHeadings = (content: string): MarkdownSection[] => {
         sections.push(section);
         stack.length = 0;
         stack.push(section);
-      }
-    } else if (h2Match && stack.length > 0) {
-      const title = h2Match[1].trim();
-
-      if (isValidTitle(title)) {
-        const id = generateSectionId(title);
-
-        const section: MarkdownSection = {
-          id,
-          title,
-          level: 2,
-        };
-
-        const parent = stack[stack.length - 1];
-        if (parent && parent.children) {
-          parent.children.push(section);
-        }
       }
     }
   }
