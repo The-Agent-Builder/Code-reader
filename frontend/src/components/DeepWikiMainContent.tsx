@@ -1,24 +1,16 @@
 import React, {
   useState,
   useEffect,
-  Children,
-  isValidElement,
   memo,
   useMemo,
   useRef,
   useCallback,
 } from "react";
-import type { ReactNode } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import rehypeRaw from "rehype-raw";
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { api } from "../services/api";
-import { findFileInTree, FileNode, normalizePath } from "../utils/fileTree";
-import { MermaidBlock } from "./MermaidBlock";
-// import MermaidDiagram from "./MermaidDiagram";
-// import "./MermaidDiagram.css";
+import { FileNode } from "../utils/fileTree";
+import { MarkedMarkdown } from "./MarkedMarkdown";
 
 interface TaskStatistics {
   code_lines: number;
@@ -36,268 +28,6 @@ interface MainContentProps {
   taskStatistics?: TaskStatistics | null;
   taskId?: number | null;
 }
-
-// 生成标题ID（与Sidebar中的逻辑保持一致）
-const generateSectionId = (title: string): string => {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9\u4e00-\u9fa5\s-]/g, "") // 保留连字符
-    .replace(/\s+/g, "-")
-    .replace(/^-+|-+$/g, ""); // 移除开头和结尾的连字符
-};
-
-const getNodeText = (node: ReactNode): string => {
-  if (typeof node === "string" || typeof node === "number") {
-    return String(node);
-  }
-
-  if (Array.isArray(node)) {
-    return node.map((child) => getNodeText(child)).join("");
-  }
-
-  if (isValidElement(node)) {
-    return getNodeText(node.props?.children);
-  }
-
-  return "";
-};
-
-const processHeadingChildren = (children: ReactNode) => {
-  const childArray = Children.toArray(children);
-  let customId: string | undefined;
-
-  const sanitizedChildren = childArray
-    .map((child) => {
-      if (typeof child === "string") {
-        const match = child.match(/^(.*?)(?:\s*\{#([A-Za-z0-9_-]+)\})\s*$/);
-        if (match) {
-          customId = match[2];
-          const textPart = match[1]?.trimEnd();
-          return textPart ? textPart : null;
-        }
-      }
-      return child;
-    })
-    .filter((child) => child !== null && child !== undefined) as ReactNode[];
-
-  const textContent = sanitizedChildren.map((child) => getNodeText(child)).join("").trim();
-
-  return {
-    sanitizedChildren,
-    textContent,
-    customId,
-  };
-};
-
-// 将自定义 markdown 组件提取到外部，避免重复创建
-// 使用 useMemo 缓存这个配置对象，避免每次渲染都重新创建
-const createMarkdownComponents = (
-  onFileHighlight: (file: string) => void,
-  onSectionChange: (section: string) => void,
-  scrollToSection: (sectionId: string) => void,
-  fileTree: FileNode | null
-) => ({
-  details: ({ children, ...props }: any) => (
-    <details
-      className="border border-gray-200 rounded-md p-3 bg-white shadow-sm open:shadow transition-shadow"
-      {...props}
-    >
-      {children}
-    </details>
-  ),
-  summary: ({ children, ...props }: any) => (
-    <summary
-      className="cursor-pointer font-medium text-gray-800 mb-2"
-      {...props}
-    >
-      {children}
-    </summary>
-  ),
-  h1: ({ children, ...props }: any) => {
-    const { sanitizedChildren, textContent, customId } =
-      processHeadingChildren(children);
-    const id = customId || generateSectionId(textContent);
-    return (
-      <h1
-        id={id}
-        className="text-3xl font-bold text-gray-900 mb-6 border-b border-gray-200 pb-3 scroll-mt-4"
-        {...props}
-      >
-        {sanitizedChildren}
-      </h1>
-    );
-  },
-  h2: ({ children, ...props }: any) => {
-    const { sanitizedChildren, textContent, customId } =
-      processHeadingChildren(children);
-    const id = customId || generateSectionId(textContent);
-    return (
-      <h2
-        id={id}
-        className="text-2xl font-semibold text-gray-800 mb-4 mt-8 scroll-mt-4"
-        {...props}
-      >
-        {sanitizedChildren}
-      </h2>
-    );
-  },
-  h3: ({ children, ...props }: any) => (
-    <h3
-      className="text-xl font-medium text-gray-700 mb-3 mt-6"
-      {...props}
-    >
-      {children}
-    </h3>
-  ),
-  p: ({ children, ...props }: any) => (
-    <p
-      className="text-gray-700 leading-relaxed mb-4"
-      {...props}
-    >
-      {children}
-    </p>
-  ),
-  ul: ({ children, ...props }: any) => (
-    <ul
-      className="list-disc list-inside mb-4 space-y-2 text-gray-700"
-      {...props}
-    >
-      {children}
-    </ul>
-  ),
-  ol: ({ children, ...props }: any) => (
-    <ol
-      className="list-decimal list-inside mb-4 space-y-2 text-gray-700"
-      {...props}
-    >
-      {children}
-    </ol>
-  ),
-  li: ({ children, ...props }: any) => (
-    <li className="ml-4" {...props}>
-      {children}
-    </li>
-  ),
-  a: ({ href, children, ...props }: any) => {
-    if (!href) {
-      return <span {...props}>{children}</span>;
-    }
-
-    if (href.startsWith("#")) {
-      const sectionId = href.replace(/^#/, "");
-      return (
-        <a
-          href={href}
-          className="text-blue-600 hover:text-blue-800 underline font-medium transition-colors"
-          onClick={(event) => {
-            event.preventDefault();
-            if (sectionId) {
-              onSectionChange(sectionId);
-              scrollToSection(sectionId);
-            }
-          }}
-          {...props}
-        >
-          {children}
-        </a>
-      );
-    }
-
-    const normalizedHref = normalizePath(href);
-    const fileExists = findFileInTree(fileTree, normalizedHref);
-
-    if (fileExists) {
-      return (
-        <button
-          className="text-blue-600 hover:text-blue-800 underline font-medium transition-colors"
-          onClick={() => onFileHighlight(normalizedHref)}
-          title={`定位到文件: ${normalizedHref}`}
-          {...props}
-        >
-          {children}
-        </button>
-      );
-    } else {
-      return (
-        <span
-          className="text-gray-500 font-mono text-sm bg-gray-100 px-1 py-0.5 rounded"
-          title={`文件不存在: ${normalizedHref}`}
-          {...props}
-        >
-          {children}
-        </span>
-      );
-    }
-  },
-  code: ({ className, children, ...props }: any) => {
-    const language = className?.replace("language-", "");
-    if (language === "mermaid") {
-      return <MermaidBlock chart={String(children)} />;
-    }
-
-    const isInline = !className;
-    return (
-      <code
-        className={`${className} ${isInline
-            ? "bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono text-gray-800"
-            : ""
-          }`}
-        {...props}
-      >
-        {children}
-      </code>
-    );
-  },
-  pre: ({ children, className, ...props }: any) => {
-    const child = Array.isArray(children) ? children[0] : children;
-    const childClassName = (child as any)?.props?.className as string | undefined;
-
-    if (childClassName?.includes("language-mermaid")) {
-      const chart = (child as any)?.props?.children ?? [];
-      return <MermaidBlock chart={String(chart)} />;
-    }
-
-    return (
-      <pre
-        className={`bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto mb-4 text-sm font-mono ${className ?? ""}`.trim()}
-        {...props}
-      >
-        {children}
-      </pre>
-    );
-  },
-  blockquote: ({ children, ...props }: any) => (
-    <blockquote
-      className="border-l-4 border-blue-500 pl-4 py-2 mb-4 bg-blue-50 text-gray-700 italic"
-      {...props}
-    >
-      {children}
-    </blockquote>
-  ),
-  table: ({ children, ...props }: any) => (
-    <div className="overflow-x-auto mb-4">
-      <table
-        className="min-w-full border border-gray-300"
-        {...props}
-      >
-        {children}
-      </table>
-    </div>
-  ),
-  th: ({ children, ...props }: any) => (
-    <th
-      className="border border-gray-300 px-4 py-2 bg-gray-100 font-semibold text-left"
-      {...props}
-    >
-      {children}
-    </th>
-  ),
-  td: ({ children, ...props }: any) => (
-    <td className="border border-gray-300 px-4 py-2" {...props}>
-      {children}
-    </td>
-  ),
-});
 
 const MainContentComponent = ({
   activeSection,
@@ -445,13 +175,7 @@ const MainContentComponent = ({
     };
   }, [markdownContent, activeSection, onSectionChange]);
 
-  // 使用 useMemo 缓存 markdown 组件配置，避免每次渲染都重新创建
-  const markdownComponents = useMemo(
-    () => createMarkdownComponents(onFileHighlight, onSectionChange, scrollToSection, fileTree),
-    [onFileHighlight, onSectionChange, scrollToSection, fileTree]
-  );
-
-  // 使用 useMemo 缓存 ReactMarkdown 的渲染结果，避免重复解析
+  // 使用 useMemo 缓存 MarkedMarkdown 的渲染结果，避免重复解析
   const renderedMarkdown = useMemo(() => {
     if (!markdownContent || activeSection === "overview") return null;
 
@@ -466,19 +190,17 @@ const MainContentComponent = ({
         {error && <div className="text-red-500 py-4">{error}</div>}
 
         {!isLoading && !error && (
-          <div className="markdown-content max-w-none">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeRaw]}
-              components={markdownComponents}
-            >
-              {markdownContent}
-            </ReactMarkdown>
-          </div>
+          <MarkedMarkdown
+            content={markdownContent}
+            onFileHighlight={onFileHighlight}
+            onSectionChange={onSectionChange}
+            scrollToSection={scrollToSection}
+            fileTree={fileTree}
+          />
         )}
       </div>
     );
-  }, [markdownContent, markdownComponents, isLoading, error, activeSection]);
+  }, [markdownContent, onFileHighlight, onSectionChange, scrollToSection, fileTree, isLoading, error, activeSection]);
 
   const renderContent = () => {
     // 如果是项目概览，显示固定的概览内容

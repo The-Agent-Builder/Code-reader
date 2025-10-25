@@ -113,6 +113,12 @@ importers:
       lucide-react:
         specifier: ^0.487.0
         version: 0.487.0(react@18.3.1)
+      marked:
+        specifier: ^16.4.1
+        version: 16.4.1
+      marked-react:
+        specifier: ^3.0.2
+        version: 3.0.2(react@18.3.1)
       mermaid:
         specifier: ^11.11.0
         version: 11.11.0
@@ -1801,9 +1807,19 @@ packages:
   markdown-table@3.0.4:
     resolution: {integrity: sha512-wiYz4+JrLyb/DqW2hkFJxP7Vd7JuTDm77fvbM8VfEQdmSMqcImWeeRbHwZjBjIFki/VaMK2BhFi7oUUZeM5bqw==}
 
+  marked-react@3.0.2:
+    resolution: {integrity: sha512-uLuH5P5i1H+igH+Y7toWX+sM2UGDdYMIPZ9JtBNajkyFiQBoAMJJY7gBlm3nHXHiPDZHkhZ9p/cb9XO0F1qnCA==}
+    peerDependencies:
+      react: ^16.8.0 || >=17.0.0
+
   marked@15.0.12:
     resolution: {integrity: sha512-8dD6FusOQSrpv9Z1rdNMdlSgQOIP880DHqnohobOmYLElGEqAL/JvxvuxZO16r4HtjTlfPRDC1hbvxC9dPN2nA==}
     engines: {node: '>= 18'}
+    hasBin: true
+
+  marked@16.4.1:
+    resolution: {integrity: sha512-ntROs7RaN3EvWfy3EZi14H4YxmT6A5YvywfhO+0pm+cH/dnSQRmdAmoFIc3B9aiwTehyk7pESH4ofyBY+V5hZg==}
+    engines: {node: '>= 20'}
     hasBin: true
 
   mdast-util-find-and-replace@3.0.2:
@@ -3951,7 +3967,14 @@ snapshots:
 
   markdown-table@3.0.4: {}
 
+  marked-react@3.0.2(react@18.3.1):
+    dependencies:
+      marked: 16.4.1
+      react: 18.3.1
+
   marked@15.0.12: {}
+
+  marked@16.4.1: {}
 
   mdast-util-find-and-replace@3.0.2:
     dependencies:
