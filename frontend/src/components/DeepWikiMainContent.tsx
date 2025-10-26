@@ -17,6 +17,7 @@ import { Badge } from "./ui/badge";
 import { api } from "../services/api";
 import { findFileInTree, FileNode, normalizePath } from "../utils/fileTree";
 import { MermaidBlock } from "./MermaidBlock";
+import SVGViewer from "./SVGViewer";
 // import MermaidDiagram from "./MermaidDiagram";
 // import "./MermaidDiagram.css";
 
@@ -56,7 +57,7 @@ const getNodeText = (node: ReactNode): string => {
   }
 
   if (isValidElement(node)) {
-    return getNodeText(node.props?.children);
+    return getNodeText((node.props as any)?.children);
   }
 
   return "";
@@ -95,7 +96,8 @@ const createMarkdownComponents = (
   onFileHighlight: (file: string) => void,
   onSectionChange: (section: string) => void,
   scrollToSection: (sectionId: string) => void,
-  fileTree: FileNode | null
+  fileTree: FileNode | null,
+  onSVGClick: (svgElement: HTMLElement) => void
 ) => ({
   details: ({ children, ...props }: any) => (
     <details
@@ -297,6 +299,27 @@ const createMarkdownComponents = (
       {children}
     </td>
   ),
+  // SVG 点击处理
+  svg: ({ node, ...props }: any) => {
+    const svgRef = useRef<SVGSVGElement>(null);
+
+    const handleClick = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (svgRef.current) {
+        onSVGClick(svgRef.current as unknown as HTMLElement);
+      }
+    };
+
+    return (
+      <svg
+        ref={svgRef}
+        {...props}
+        onClick={handleClick}
+        className="cursor-pointer hover:opacity-80 transition-opacity"
+        style={{ maxWidth: "100%", height: "auto", ...props.style }}
+      />
+    );
+  },
 });
 
 const MainContentComponent = ({
@@ -313,10 +336,26 @@ const MainContentComponent = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // SVG 查看器状态
+  const [isSVGViewerOpen, setIsSVGViewerOpen] = useState(false);
+  const [selectedSVG, setSelectedSVG] = useState<HTMLElement | null>(null);
+
   // 使用 ref 来标记是否正在执行程序触发的滚动
   const isScrollingProgrammatically = useRef(false);
   // 节流定时器
   const scrollThrottleTimer = useRef<number | null>(null);
+
+  // 处理 SVG 点击事件
+  const handleSVGClick = useCallback((svgElement: HTMLElement) => {
+    setSelectedSVG(svgElement.cloneNode(true) as HTMLElement);
+    setIsSVGViewerOpen(true);
+  }, []);
+
+  // 关闭 SVG 查看器
+  const closeSVGViewer = useCallback(() => {
+    setIsSVGViewerOpen(false);
+    setSelectedSVG(null);
+  }, []);
 
   // 加载README文档
   const loadReadmeContent = async (taskId: number) => {
@@ -447,8 +486,8 @@ const MainContentComponent = ({
 
   // 使用 useMemo 缓存 markdown 组件配置，避免每次渲染都重新创建
   const markdownComponents = useMemo(
-    () => createMarkdownComponents(onFileHighlight, onSectionChange, scrollToSection, fileTree),
-    [onFileHighlight, onSectionChange, scrollToSection, fileTree]
+    () => createMarkdownComponents(onFileHighlight, onSectionChange, scrollToSection, fileTree, handleSVGClick),
+    [onFileHighlight, onSectionChange, scrollToSection, fileTree, handleSVGClick]
   );
 
   // 使用 useMemo 缓存 ReactMarkdown 的渲染结果，避免重复解析
@@ -1083,7 +1122,16 @@ const MainContentComponent = ({
     }
   };
 
-  return <div className="p-8 max-w-none">{renderContent()}</div>;
+  return (
+    <>
+      <div className="p-8 max-w-none">{renderContent()}</div>
+      <SVGViewer
+        isOpen={isSVGViewerOpen}
+        onClose={closeSVGViewer}
+        svgElement={selectedSVG}
+      />
+    </>
+  );
 };
 
 // 使用 memo 优化组件，但允许 activeSection 变化时重新渲染（因为需要执行 useEffect）

@@ -12,7 +12,7 @@ import logging
 from datetime import datetime, timezone
 import zipfile
 import httpx
-
+from utils.makdown_utils.mermaid_to_svg import MermaidToSvgConverter
 logger = logging.getLogger(__name__)
 
 
@@ -1608,11 +1608,17 @@ class TaskReadmeService:
                     "message": f"任务ID {readme_data['task_id']} 不存在",
                     "task_id": readme_data["task_id"],
                 }
-
+            converter = MermaidToSvgConverter(use_cli=True)
+            try:
+                rendered_content = converter.convert_markdown(readme_data["content"])
+            except Exception as e:
+                logger.error(f"转换Markdown时发生错误: {str(e)}")
+                rendered_content = readme_data["content"]
             # 创建新的README记录
             new_readme = TaskReadme(
                 task_id=readme_data["task_id"],
                 content=readme_data["content"],
+                rendered_content=rendered_content,
             )
 
             db.add(new_readme)
