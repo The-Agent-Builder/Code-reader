@@ -6,9 +6,9 @@
     "--disable-gpu"
   ],
   "defaultViewport": {
-    "width": 2048,
-    "height": 2048,
-    "deviceScaleFactor": 2
+    "width": 20480,
+    "height": 20480,
+    "deviceScaleFactor": 3
   }
 }
 
