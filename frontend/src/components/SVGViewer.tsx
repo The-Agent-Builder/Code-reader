@@ -141,7 +141,8 @@ export default function SVGViewer({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black bg-opacity-95 flex flex-col"
+      className="fixed inset-0 z-50 flex flex-col"
+      style={{ backgroundColor: '#ffffff', opacity: 0.95}}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}

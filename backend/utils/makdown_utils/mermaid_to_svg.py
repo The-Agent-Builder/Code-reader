@@ -90,7 +90,17 @@ class MermaidToSvgConverter:
             output_file = input_file.replace('.mmd', '.svg')
             
             # 构建 mmdc 命令参数
-            cmd = ['mmdc', '-i', input_file, '-o', output_file, '-b', 'transparent']
+            # 添加宽度、缩放和其他参数以确保文字完整显示
+            cmd = [
+                'mmdc', 
+                '-i', input_file, 
+                '-o', output_file, 
+                '-b', 'transparent',
+                '-w', '2048',      # 设置宽度为2048px
+                '-H', '2048',      # 设置高度为2048px  
+                '-s', '2',         # 缩放因子为2，提高清晰度
+                '--cssFile', '/dev/null'  # 不使用额外CSS文件
+            ]
             
             # 如果存在 puppeteer 配置文件，添加配置参数（用于 Docker 环境）
             puppeteer_config = '/root/puppeteer-config.json'

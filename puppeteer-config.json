@@ -1,0 +1,14 @@
+{
+  "args": [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu"
+  ],
+  "defaultViewport": {
+    "width": 2048,
+    "height": 2048,
+    "deviceScaleFactor": 2
+  }
+}
+

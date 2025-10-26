@@ -118,8 +118,20 @@ RUN npm install -g @mermaid-js/mermaid-cli
 # 安装 Chrome Headless Shell（用于 mermaid 渲染）
 RUN npx puppeteer browsers install chrome-headless-shell
 
-# 创建 Puppeteer 配置文件，允许在 root 下运行
-RUN echo '{"args": ["--no-sandbox", "--disable-setuid-sandbox"]}' > /root/puppeteer-config.json
+# 创建 Puppeteer 配置文件，允许在 root 下运行，并设置更大的viewport
+RUN echo '{\
+  "args": [\
+    "--no-sandbox",\
+    "--disable-setuid-sandbox",\
+    "--disable-dev-shm-usage",\
+    "--disable-gpu"\
+  ],\
+  "defaultViewport": {\
+    "width": 20480,\
+    "height": 20480,\
+    "deviceScaleFactor": 3\
+  }\
+}' > /root/puppeteer-config.json
 
 # 设置工作目录
 WORKDIR /app
