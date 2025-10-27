@@ -120,6 +120,7 @@ class TaskReadme(Base):
     id = Column(Integer, primary_key=True, index=True, comment="readme仓库ID")
     task_id = Column(Integer, ForeignKey("analysis_tasks.id"), index=True, nullable=False, comment="任务ID")
     content = Column(Text, nullable=False, comment="readme的完整内容")
+    rendered_content = Column(Text, comment="渲染后的内容")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), comment="创建时间")
     updated_at = Column(
         DateTime,
@@ -136,7 +137,8 @@ class TaskReadme(Base):
         return {
             "id": self.id,
             "task_id": self.task_id,
-            "content": self.content,
+            "content": self.rendered_content if self.rendered_content else self.content,
+            "rendered_content": self.rendered_content,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

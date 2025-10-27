@@ -31,6 +31,7 @@
     "@radix-ui/react-tooltip": "^1.1.8",
     "@types/jszip": "^3.4.1",
     "@types/react-router-dom": "^5.3.3",
+    "@types/svg-pan-zoom": "^3.4.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "*",
     "cmdk": "^1.1.1",
@@ -53,6 +54,7 @@
     "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1",
     "sonner": "^2.0.3",
+    "svg-pan-zoom": "^3.6.2",
     "tailwind-merge": "*",
     "vaul": "^1.1.2"
   },

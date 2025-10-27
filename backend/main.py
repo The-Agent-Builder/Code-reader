@@ -8,15 +8,123 @@ from fastapi.responses import JSONResponse
 from datetime import datetime
 import uvicorn
 import os
+import asyncio
+import logging
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
-from database import test_database_connection, get_database_info
+from database import test_database_connection, get_database_info, SessionLocal
 from routers import repository_router, analysis_router, auth_router
 from api.v1.tasks import tasks_router
 from config import settings
 from pathlib import Path
+from models import TaskReadme
+from utils.makdown_utils.mermaid_to_svg import MermaidToSvgConverter
 
 # 加载环境变量
 load_dotenv()
+
+# 配置日志
+logger = logging.getLogger(__name__)
+
+# 全局变量用于控制后台任务
+background_task_running = False
+
+
+async def process_empty_rendered_content():
+    """
+    后台任务：处理task_readmes表中rendered_content为空的记录
+    定期检查并生成rendered_content
+    """
+    global background_task_running
+    logger.info("启动rendered_content处理后台任务...")
+    
+    while background_task_running:
+        try:
+            db = SessionLocal()
+            try:
+                # 查询rendered_content为空或NULL的记录，或者content不为空且与rendered_content相同的记录
+                empty_readmes = db.query(TaskReadme).filter(
+                    (TaskReadme.rendered_content == None) | 
+                    (TaskReadme.rendered_content == "") |
+                    (
+                        (TaskReadme.content != None) & 
+                        (TaskReadme.content != "") & 
+                        (TaskReadme.content == TaskReadme.rendered_content)
+                    )
+                ).all()
+                
+                if empty_readmes:
+                    logger.info(f"发现 {len(empty_readmes)} 条需要处理的README记录")
+                    
+                    # 初始化转换器
+                    converter = MermaidToSvgConverter(use_cli=True)
+                    
+                    for readme in empty_readmes:
+                        try:
+                            logger.info(f"处理README ID: {readme.id}, Task ID: {readme.task_id}")
+                            
+                            # 转换markdown内容
+                            if readme.content:
+                                # 使用 asyncio.to_thread 将阻塞操作移到线程池中执行
+                                rendered_content = await asyncio.to_thread(
+                                    converter.convert_markdown, 
+                                    readme.content
+                                )
+                                
+                                # 更新rendered_content
+                                readme.rendered_content = rendered_content
+                                db.commit()
+                                
+                                logger.info(f"成功生成README ID {readme.id} 的rendered_content")
+                            else:
+                                logger.warning(f"README ID {readme.id} 的content字段为空，跳过处理")
+                                
+                        except Exception as e:
+                            logger.error(f"处理README ID {readme.id} 时发生错误: {str(e)}")
+                            db.rollback()
+                            # 继续处理下一条记录
+                            continue
+                else:
+                    logger.debug("没有需要处理的README记录")
+                    
+            finally:
+                db.close()
+                
+        except Exception as e:
+            logger.error(f"后台任务执行出错: {str(e)}")
+        
+        # 等待一段时间后再次检查（60秒）
+        await asyncio.sleep(60)
+    
+    logger.info("rendered_content处理后台任务已停止")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    应用生命周期管理
+    """
+    global background_task_running
+    
+    # 启动时执行
+    logger.info("应用启动中...")
+    background_task_running = True
+    
+    # 启动后台任务
+    task = asyncio.create_task(process_empty_rendered_content())
+    
+    yield
+    
+    # 关闭时执行
+    logger.info("应用关闭中...")
+    background_task_running = False
+    
+    # 等待后台任务结束
+    try:
+        await asyncio.wait_for(task, timeout=5.0)
+    except asyncio.TimeoutError:
+        logger.warning("后台任务关闭超时")
+        task.cancel()
 
 
 # 确保必要的目录存在
@@ -44,6 +152,7 @@ app = FastAPI(
     docs_url="/docs",  # Swagger UI 文档地址
     redoc_url="/redoc",  # ReDoc 文档地址
     openapi_url="/openapi.json",  # OpenAPI schema 地址
+    lifespan=lifespan,  # 添加生命周期管理
 )
 
 # 配置CORS中间件

@@ -114,7 +114,7 @@ CREATE TABLE IF NOT EXISTS task_readmes (
   content LONGTEXT NOT NULL COMMENT 'readme的完整内容',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-
+  rendered_content LONGTEXT NULL COMMENT '渲染后的内容',
   INDEX idx_task_id (task_id),
   INDEX idx_created_at (created_at),
   INDEX idx_updated_at (updated_at),

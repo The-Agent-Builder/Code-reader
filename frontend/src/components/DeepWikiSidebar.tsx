@@ -26,7 +26,9 @@ interface MarkdownSection {
 
 // 解析markdown内容，提取标题结构
 const parseMarkdownHeadings = (content: string): MarkdownSection[] => {
+  console.log("Parsing markdown headings:", content);
   const lines = content.split("\n");
+  console.log("Lines:", lines);
   const sections: MarkdownSection[] = [];
   const stack: MarkdownSection[] = [];
   let inCodeBlock = false;
@@ -45,14 +47,13 @@ const parseMarkdownHeadings = (content: string): MarkdownSection[] => {
     if (inCodeBlock) {
       continue;
     }
-
+    console.log("Line:", line);
     // 更严格的标题匹配：确保 # 后面有空格，且不在行首有其他字符
-    const h1Match = line.match(/^# (.+)$/);
-    const h2Match = line.match(/^## (.+)$/);
+    const h1Match = line.match(/^# (.+)/);
+    const h2Match = line.match(/^## (.+)/);
 
     if (h1Match) {
       const title = h1Match[1].trim();
-
       // 过滤掉一些明显不是标题的内容
       if (isValidTitle(title)) {
         const id = generateSectionId(title);
