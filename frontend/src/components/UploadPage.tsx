@@ -48,13 +48,70 @@ export default function UploadPage({
     }
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
 
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      setSelectedFiles(e.dataTransfer.files);
+    const items = e.dataTransfer.items;
+    if (!items || items.length === 0) return;
+
+    const files: File[] = [];
+
+    // 递归处理文件夹
+    const processEntry = async (entry: any, path = ""): Promise<void> => {
+      if (entry.isFile) {
+        return new Promise((resolve) => {
+          entry.file((file: File) => {
+            // 为文件添加webkitRelativePath属性
+            const relativePath = path ? `${path}/${file.name}` : file.name;
+            Object.defineProperty(file, "webkitRelativePath", {
+              value: relativePath,
+              writable: false,
+              configurable: true,
+            });
+            files.push(file);
+            resolve();
+          });
+        });
+      } else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        return new Promise((resolve) => {
+          const readEntries = () => {
+            reader.readEntries(async (entries: any[]) => {
+              if (entries.length === 0) {
+                resolve();
+                return;
+              }
+              for (const childEntry of entries) {
+                const newPath = path ? `${path}/${entry.name}` : entry.name;
+                await processEntry(childEntry, newPath);
+              }
+              // 继续读取更多条目（某些浏览器会分批返回）
+              readEntries();
+            });
+          };
+          readEntries();
+        });
+      }
+    };
+
+    // 处理所有拖拽项
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === "file") {
+        const entry = item.webkitGetAsEntry();
+        if (entry) {
+          await processEntry(entry);
+        }
+      }
+    }
+
+    // 创建FileList
+    if (files.length > 0) {
+      const dataTransfer = new DataTransfer();
+      files.forEach((file) => dataTransfer.items.add(file));
+      setSelectedFiles(dataTransfer.files);
     }
   }, []);
 
@@ -138,9 +195,19 @@ export default function UploadPage({
           </div>
         </div>
 
+        {/* 隐藏的文件选择input */}
+        <input
+          id="file-upload"
+          type="file"
+          multiple
+          {...({ webkitdirectory: "true" } as any)}
+          className="hidden"
+          onChange={handleFileSelect}
+        />
+
         <div
           className={`
-            relative border-2 border-dashed rounded-2xl p-12 text-center transition-all duration-200
+            relative border-2 border-dashed rounded-2xl p-12 text-center transition-all duration-200 cursor-pointer
             ${
               dragActive
                 ? "border-blue-400 bg-blue-50"
@@ -153,16 +220,8 @@ export default function UploadPage({
           onDragLeave={handleDrag}
           onDragOver={handleDrag}
           onDrop={handleDrop}
+          onClick={handleSelectFolderClick}
         >
-          <input
-            id="file-upload"
-            type="file"
-            multiple
-            webkitdirectory="true"
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            onChange={handleFileSelect}
-          />
-
           <div className="space-y-4">
             {selectedFiles ? (
               <>
