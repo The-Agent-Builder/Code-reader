@@ -4,13 +4,12 @@ import os
 import re
 import traceback
 from pathlib import Path
-from typing import Dict, List, Optional, Set
-import httpx
+from typing import Dict, List, Set
 from datetime import datetime
+import httpx
 
-from database import get_db, SessionLocal
-from models import AnalysisTask, Repository
-from sqlalchemy.orm import Session
+from database import SessionLocal
+from models import AnalysisTask
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +45,7 @@ def get_language_from_extension(file_path: str) -> str:
     
     language_map = {
         "py": "python",
-        "js": "javascript", 
+        "js": "javascript",
         "ts": "typescript",
         "tsx": "typescript",
         "jsx": "javascript",
@@ -56,7 +55,7 @@ def get_language_from_extension(file_path: str) -> str:
         "cs": "csharp",
         "php": "php",
         "rb": "ruby",
-        "go": "go", 
+        "go": "go",
         "rs": "rust",
         "kt": "kotlin",
         "swift": "swift",
@@ -87,7 +86,7 @@ def get_language_from_extension(file_path: str) -> str:
         "vue": "vue",
         "svelte": "svelte",
     }
-    
+
     return language_map.get(extension, "text")
 
 
@@ -95,7 +94,7 @@ def get_language_from_extension(file_path: str) -> str:
 def should_skip_file(file_path: str) -> bool:
     """判断是否应该跳过该文件"""
     extension = file_path.split(".")[-1].lower() if "." in file_path else ""
-    
+
     skip_extensions = {
         # 图片
         "jpg", "jpeg", "png", "gif", "bmp", "svg", "ico", "webp",
@@ -126,8 +125,8 @@ def count_code_lines(content: str) -> int:
 def generate_mock_file_content(file_path: str, language: str) -> str:
     """生成基于文件类型的模拟内容"""
     file_name = os.path.basename(file_path)
-    class_name = re.sub(r'[^a-zA-Z0-9]', '', file_name.split('.')[0])
-    
+    class_name = re.sub(r"[^a-zA-Z0-9]", "", file_name.split(".")[0])
+
     if language == "python":
         return f'''#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
@@ -402,7 +401,7 @@ def get_file_list_from_path(local_path: str) -> List[str]:
             current_file = Path(__file__).resolve()
             backend_dir = current_file.parent.parent  # 回到backend目录
             project_root = backend_dir.parent  # 回到项目根目录
-            repo_path = project_root / local_path.lstrip('../')
+            repo_path = project_root / local_path.lstrip('../').lstrip('..\\')
         else:
             repo_path = Path(local_path)
             
@@ -452,6 +451,15 @@ async def execute_step_0_scan_files(task_id: int, local_path: str, db) -> Dict:
         successful_files = 0
         failed_files = 0
         
+        # 获取仓库根路径
+        if not os.path.isabs(local_path):
+            current_file = Path(__file__).resolve()
+            backend_dir = current_file.parent.parent
+            project_root = backend_dir.parent
+            repo_path = project_root / local_path.lstrip("../")
+        else:
+            repo_path = Path(local_path)
+
         # 对每个文件创建分析记录
         for file_path in file_list:
             try:
@@ -459,14 +467,31 @@ async def execute_step_0_scan_files(task_id: int, local_path: str, db) -> Dict:
                 if should_skip_file(file_path):
                     logger.debug(f"跳过文件: {file_path} (不支持的文件类型)")
                     continue
-                
-                # 生成基于文件类型的模拟内容
+
+                # 获取语言类型
                 language = get_language_from_extension(file_path)
-                mock_file_content = generate_mock_file_content(file_path, language)
-                
-                code_lines = count_code_lines(mock_file_content)
-                dependencies = extract_dependencies(mock_file_content, language)
-                
+
+                # 读取实际文件内容
+                full_file_path = repo_path / file_path
+                real_file_content = ""
+                try:
+                    with open(full_file_path, "r", encoding="utf-8") as f:
+                        real_file_content = f.read()
+                except UnicodeDecodeError:
+                    # 如果UTF-8解码失败，尝试其他编码
+                    try:
+                        with open(full_file_path, "r", encoding="gbk") as f:
+                            real_file_content = f.read()
+                    except Exception as decode_error:
+                        logger.warning(f"无法读取文件 {file_path}: {decode_error}")
+                        real_file_content = ""
+                except Exception as read_error:
+                    logger.warning(f"无法读取文件 {file_path}: {read_error}")
+                    real_file_content = ""
+
+                code_lines = count_code_lines(real_file_content)
+                dependencies = extract_dependencies(real_file_content, language)
+
                 # 创建文件分析数据
                 file_analysis_data = {
                     "task_id": task_id,
@@ -475,15 +500,15 @@ async def execute_step_0_scan_files(task_id: int, local_path: str, db) -> Dict:
                     "analysis_version": "1.0",
                     "status": "pending",
                     "code_lines": code_lines,
-                    "code_content": mock_file_content,
+                    "code_content": real_file_content,
                     "file_analysis": "",
                     "dependencies": dependencies,
                     "error_message": "",
                 }
-                
+
                 # 调用服务创建文件分析记录
                 result = FileAnalysisService.create_file_analysis(file_analysis_data, db)
-                
+
                 if result["status"] == "success":
                     logger.debug(f"文件 {file_path} 分析记录创建成功")
                     successful_files += 1
@@ -491,23 +516,23 @@ async def execute_step_0_scan_files(task_id: int, local_path: str, db) -> Dict:
                 else:
                     logger.error(f"文件 {file_path} 分析记录创建失败: {result['message']}")
                     failed_files += 1
-                    
+
             except Exception as file_error:
                 logger.error(f"处理文件 {file_path} 时出错: {str(file_error)}")
                 failed_files += 1
                 continue
-        
+
         logger.info(f"步骤0完成 - 成功: {successful_files}, 失败: {failed_files}, 总代码行数: {total_code_lines}")
-        
+
         return {
             "success": True,
             "message": "扫描代码文件完成",
             "total_files": len(file_list),
             "successful_files": successful_files,
             "failed_files": failed_files,
-            "total_code_lines": total_code_lines
+            "total_code_lines": total_code_lines,
         }
-        
+
     except Exception as e:
         logger.error(f"步骤0执行失败: {str(e)}")
         return {
@@ -516,94 +541,75 @@ async def execute_step_0_scan_files(task_id: int, local_path: str, db) -> Dict:
             "total_files": 0,
             "successful_files": 0,
             "failed_files": 0,
-            "total_code_lines": 0
+            "total_code_lines": 0,
         }
 
 
 async def execute_step_1_create_knowledge_base(task_id: int, local_path: str, repo_info: Dict) -> Dict:
     """步骤1: 知识库创建"""
     logger.info(f"开始执行步骤1: 知识库创建 - 任务ID: {task_id}")
-    
+
     try:
         # 添加项目根目录到Python路径
         import sys
         from pathlib import Path
-        
+
         current_file = Path(__file__).resolve()
         backend_dir = current_file.parent.parent
         project_root = backend_dir.parent
-        
+
         if str(project_root) not in sys.path:
             sys.path.insert(0, str(project_root))
-        
+
         # 动态导入知识库创建flow
         logger.info(f"调用知识库创建flow - 本地路径: {local_path}")
         from src.flows.web_flow import create_knowledge_base as create_kb_flow
+
         # 执行知识库创建flow
-        result = await create_kb_flow(
-            task_id=task_id, 
-            local_path=local_path, 
-            repo_info=repo_info
-        )
-        
+        result = await create_kb_flow(task_id=task_id, local_path=local_path, repo_info=repo_info)
+
         # 检查flow执行结果
         if result.get("status") == "knowledge_base_ready" and result.get("vectorstore_index"):
             logger.info(f"知识库创建成功，索引: {result.get('vectorstore_index')}")
-            return {
-                "success": True,
-                "message": "知识库创建完成",
-                "vectorstore_index": result.get("vectorstore_index")
-            }
+            return {"success": True, "message": "知识库创建完成", "vectorstore_index": result.get("vectorstore_index")}
         else:
             logger.error(f"知识库创建失败: {result}")
-            return {
-                "success": False,
-                "message": f"知识库创建失败: {result.get('error', '未知错误')}"
-            }
-            
+            return {"success": False, "message": f"知识库创建失败: {result.get('error', '未知错误')}"}
+
     except Exception as e:
         logger.error(f"步骤1执行失败: {str(e)}")
-        return {
-            "success": False,
-            "message": f"步骤1执行失败: {str(e)}"
-        }
+        return {"success": False, "message": f"步骤1执行失败: {str(e)}"}
 
 
 async def execute_step_2_analyze_data_model(task_id: int, vectorstore_index: str) -> Dict:
     """步骤2: 分析数据模型"""
     logger.info(f"开始执行步骤2: 分析数据模型 - 任务ID: {task_id}")
-    
+
     try:
         # 添加项目根目录到Python路径
         import sys
         from pathlib import Path
-        
+
         current_file = Path(__file__).resolve()
         backend_dir = current_file.parent.parent
         project_root = backend_dir.parent
         src_path = project_root / "src"
-        
+
         if str(src_path) not in sys.path:
             sys.path.insert(0, str(src_path))
-            
+
         # 动态导入分析数据模型flow
         try:
             from src.flows.web_flow import analyze_data_model as analyze_dm_flow
         except ImportError as import_error:
             logger.error(f"无法导入分析数据模型flow: {import_error}")
-            return {
-                "success": False,
-                "message": f"无法导入分析数据模型flow: {import_error}"
-            }
-        
+            return {"success": False, "message": f"无法导入分析数据模型flow: {import_error}"}
+
         logger.info(f"调用分析数据模型flow - 向量索引: {vectorstore_index}")
-        
+
         # 执行分析数据模型flow
-        result = await analyze_dm_flow(
-            task_id=task_id,
-            vectorstore_index=vectorstore_index
-        )
-        
+        result = await analyze_dm_flow(task_id=task_id, vectorstore_index=vectorstore_index)
+
         # 检查flow执行结果
         if result.get("status") == "analysis_completed":
             analysis_items_count = result.get("analysis_items_count", 0)
@@ -611,9 +617,11 @@ async def execute_step_2_analyze_data_model(task_id: int, vectorstore_index: str
             successful_files = result.get("successful_files", 0)
             failed_files = result.get("failed_files", 0)
             success_rate = result.get("success_rate", "0%")
-            
-            logger.info(f"分析数据模型完成: 总文件 {total_files}, 成功 {successful_files}, 失败 {failed_files}, 分析项 {analysis_items_count}")
-            
+
+            logger.info(
+                f"分析数据模型完成: 总文件 {total_files}, 成功 {successful_files}, 失败 {failed_files}, 分析项 {analysis_items_count}"
+            )
+
             return {
                 "success": True,
                 "message": result.get("message", "分析数据模型完成"),
@@ -621,39 +629,33 @@ async def execute_step_2_analyze_data_model(task_id: int, vectorstore_index: str
                 "total_files": total_files,
                 "successful_files": successful_files,
                 "failed_files": failed_files,
-                "success_rate": success_rate
+                "success_rate": success_rate,
             }
         else:
             logger.error(f"分析数据模型失败: {result}")
-            return {
-                "success": False,
-                "message": f"分析数据模型失败: {result.get('error', '未知错误')}"
-            }
-            
+            return {"success": False, "message": f"分析数据模型失败: {result.get('error', '未知错误')}"}
+
     except Exception as e:
         logger.error(f"步骤2执行失败: {str(e)}")
-        return {
-            "success": False,
-            "message": f"步骤2执行失败: {str(e)}"
-        }
+        return {"success": False, "message": f"步骤2执行失败: {str(e)}"}
 
 
 async def execute_step_3_generate_document_structure(task_id: int, external_file_path: str) -> Dict:
     """步骤3: 生成文档结构"""
     # 延迟导入避免循环依赖
     from services import TaskReadmeService
-    
+
     logger.info(f"开始执行步骤3: 生成文档结构 - 任务ID: {task_id}")
-    
+
     try:
         # 1. 调用外部README API生成文档结构
         logger.info("调用外部README API生成文档结构...")
-        
+
         logger.info(f"传递给README API的路径: {external_file_path}")
-        
+
         # 从环境变量或配置中获取README API基础URL
         readme_api_base_url = os.getenv("README_API_BASE_URL", "http://localhost:80111")
-        
+
         request_data = {
             "local_path": external_file_path,
             "generate_readme": True,
@@ -667,7 +669,7 @@ async def execute_step_3_generate_document_structure(task_id: int, external_file
             "include_code_examples": True,
         }
         print(request_data)
-        
+
         max_create_attempts = 50
         retry_delay_seconds = 5
         request_timeout = httpx.Timeout(600.0)
@@ -676,14 +678,9 @@ async def execute_step_3_generate_document_structure(task_id: int, external_file
         async with httpx.AsyncClient(timeout=request_timeout) as client:
             for attempt in range(1, max_create_attempts + 1):
                 try:
-                    response = await client.post(
-                        f"{readme_api_base_url}/api/analyze/local",
-                        json=request_data
-                    )
+                    response = await client.post(f"{readme_api_base_url}/api/analyze/local", json=request_data)
                 except httpx.RequestError as exc:
-                    logger.warning(
-                        f"文档结构生成任务创建请求失败(第 {attempt}/{max_create_attempts} 次尝试): {exc}"
-                    )
+                    logger.warning(f"文档结构生成任务创建请求失败(第 {attempt}/{max_create_attempts} 次尝试): {exc}")
                     if attempt < max_create_attempts:
                         await asyncio.sleep(retry_delay_seconds)
                     continue
@@ -695,159 +692,144 @@ async def execute_step_3_generate_document_structure(task_id: int, external_file
                     logger.info(f"文档结构生成任务已创建，任务ID: {readme_api_task_id}")
                     break
 
-                error_data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
-                logger.error(
-                    f"文档结构生成任务创建失败(第 {attempt}/{max_create_attempts} 次尝试): {error_data}"
+                error_data = (
+                    response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
                 )
+                logger.error(f"文档结构生成任务创建失败(第 {attempt}/{max_create_attempts} 次尝试): {error_data}")
                 if attempt < max_create_attempts:
                     logger.info(f"将在 {retry_delay_seconds} 秒后重试创建文档结构任务")
                     await asyncio.sleep(retry_delay_seconds)
                 else:
                     return {
                         "success": False,
-                        "message": f"文档结构生成任务创建失败: {error_data.get('message', response.text)}"
+                        "message": f"文档结构生成任务创建失败: {error_data.get('message', response.text)}",
                     }
 
         if not readme_api_task_id:
-            return {
-                "success": False,
-                "message": "文档结构生成任务创建失败: 请求在最大重试次数后仍未成功"
-            }
-        
+            return {"success": False, "message": "文档结构生成任务创建失败: 请求在最大重试次数后仍未成功"}
+
         # 2. 轮询检查生成状态
         logger.info("开始轮询检查文档生成状态...")
         completed = False
         attempts = 0
         max_attempts = 60  # 最多轮询60次（5分钟）
         poll_interval = 5  # 每5秒检查一次
-        
+
         while not completed and attempts < max_attempts:
             attempts += 1
             logger.info(f"第 {attempts} 次检查文档生成状态...")
-            
+
             try:
                 # 增加超时时间到60秒，并添加重试逻辑
                 async with httpx.AsyncClient(timeout=60.0) as client:
                     status_response = await client.get(
                         f"{readme_api_base_url}/api/analyze/local/{readme_api_task_id}/status"
                     )
-                    
+
                     if status_response.status_code == 200:
                         status_result = status_response.json()
-                        
+
                         if status_result.get("status") == "completed":
                             logger.info("文档结构生成完成!")
-                            
+
                             # 3. 获取生成的文档内容
                             if status_result.get("result") and status_result["result"].get("markdown"):
                                 markdown_content = status_result["result"]["markdown"]
                                 logger.info(f"获取到生成的文档内容，长度: {len(markdown_content)}")
-                                
+
                                 # 4. 保存到本项目数据库
                                 logger.info("保存文档到数据库...")
-                                readme_data = {
-                                    "task_id": task_id,
-                                    "content": markdown_content
-                                }
-                                
+                                readme_data = {"task_id": task_id, "content": markdown_content}
+
                                 # 使用数据库会话来保存文档
-                                
+
                                 with SessionLocal() as db:
                                     save_result = TaskReadmeService.create_task_readme(readme_data, db)
-                                    
+
                                     if save_result["status"] == "success":
                                         logger.info("文档结构生成并保存成功")
                                         completed = True
                                         return {
                                             "success": True,
                                             "message": "文档结构生成并保存成功",
-                                            "content_length": len(markdown_content)
+                                            "content_length": len(markdown_content),
                                         }
                                     else:
                                         logger.error(f"保存文档到数据库失败: {save_result['message']}")
                                         return {
                                             "success": False,
-                                            "message": f"保存文档到数据库失败: {save_result['message']}"
+                                            "message": f"保存文档到数据库失败: {save_result['message']}",
                                         }
                             else:
                                 logger.error("生成的文档内容为空")
-                                return {
-                                    "success": False,
-                                    "message": "生成的文档内容为空"
-                                }
-                                
+                                return {"success": False, "message": "生成的文档内容为空"}
+
                         elif status_result.get("status") == "failed" or status_result.get("error"):
                             logger.error(f"文档生成失败: {status_result.get('error', status_result.get('message'))}")
                             return {
                                 "success": False,
-                                "message": f"文档生成失败: {status_result.get('error', status_result.get('message'))}"
+                                "message": f"文档生成失败: {status_result.get('error', status_result.get('message'))}",
                             }
                         else:
                             # 仍在进行中，显示进度
                             progress = status_result.get("progress", 0)
                             current_stage = status_result.get("current_stage", "处理中")
                             logger.info(f"文档生成进度: {progress}% - {current_stage}")
-                            
+
                             # 等待下次检查
                             await asyncio.sleep(poll_interval)
                     else:
                         logger.error(f"检查文档生成状态失败: HTTP {status_response.status_code}")
                         await asyncio.sleep(poll_interval)
-                        
+
             except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.TimeoutException) as timeout_error:
                 logger.warning(f"第 {attempts} 次状态检查超时: {str(timeout_error)}")
                 print(f"状态检查超时 (第{attempts}次): {str(timeout_error)}")
-                
+
                 # 如果还有重试机会，继续等待后重试
                 if attempts < max_attempts:
                     logger.info(f"等待 {poll_interval} 秒后重试...")
                     await asyncio.sleep(poll_interval)
                 else:
                     logger.error("已达到最大重试次数，状态检查失败")
-                    
+
             except httpx.RequestError as req_error:
                 logger.error(f"第 {attempts} 次状态检查请求错误: {str(req_error)}")
                 print(f"状态检查请求错误 (第{attempts}次): {str(req_error)}")
-                
+
                 # 网络错误也继续重试
                 if attempts < max_attempts:
                     logger.info(f"等待 {poll_interval} 秒后重试...")
                     await asyncio.sleep(poll_interval)
                 else:
                     logger.error("已达到最大重试次数，状态检查失败")
-                    
+
             except Exception as unexpected_error:
                 logger.error(f"状态检查发生意外错误: {str(unexpected_error)}")
                 print(f"状态检查意外错误: {str(unexpected_error)}")
                 # 意外错误也重试
                 await asyncio.sleep(poll_interval)
-        
+
         if not completed:
             logger.error("文档生成超时")
-            return {
-                "success": False,
-                "message": "文档生成超时"
-            }
-            
+            return {"success": False, "message": "文档生成超时"}
+
     except Exception as e:
         error_traceback = traceback.format_exc()
         logger.error(f"步骤3执行失败: {str(e)}")
         logger.error(f"步骤3异常详细信息:\n{error_traceback}")
         print(f"=== 步骤3异常详细信息 ===\n{error_traceback}")
-        return {
-            "success": False,
-            "message": f"步骤3执行失败: {str(e)}"
-        }
+        return {"success": False, "message": f"步骤3执行失败: {str(e)}"}
 
-    
-async def run_task(task_id: int,external_file_path: str):
+
+async def run_task(task_id: int, external_file_path: str):
     """运行分析任务的主函数"""
     # 延迟导入避免循环依赖
     from services import AnalysisTaskService, RepositoryService
     from database import get_db_async
-    
+
     logger.info(f"开始运行任务 {task_id}")
-    
+
     async with get_db_async() as db:
         try:
             # 获取任务信息
@@ -855,45 +837,45 @@ async def run_task(task_id: int,external_file_path: str):
             if task_result["status"] != "success":
                 logger.error(f"获取任务失败: {task_result['message']}")
                 return {"status": "error", "message": task_result["message"]}
-            
+
             task_data = task_result["task"]
             repository_id = task_data["repository_id"]
-            
+
             # 获取仓库信息
             repo_result = RepositoryService.get_repository_by_id(repository_id, db)
             if repo_result["status"] != "success":
                 logger.error(f"获取仓库失败: {repo_result['message']}")
                 return {"status": "error", "message": repo_result["message"]}
-                
+
             repository = repo_result["repository"]
             local_path = repository.get("local_path")
-            
+
             if not local_path:
                 logger.error(f"仓库 {repository_id} 没有本地路径")
                 return {"status": "error", "message": "仓库缺少本地路径"}
-            
+
             # 更新任务状态为运行中
             task_obj = db.query(AnalysisTask).filter(AnalysisTask.id == task_id).first()
             if task_obj:
                 task_obj.status = "running"
                 task_obj.start_time = datetime.now()
                 db.commit()
-            
+
             logger.info(f"任务 {task_id} 使用仓库路径: {local_path}")
-            
+
             # 准备仓库信息
             repo_info = {
                 "full_name": repository.get("full_name") or repository.get("name"),
                 "name": repository.get("name"),
                 "local_path": local_path,
             }
-            
+
             # ========== 执行4个分析步骤 ==========
-            
+
             # 步骤0: 扫描代码文件
             logger.info("=== 开始执行步骤0: 扫描代码文件 ===")
             step0_result = await execute_step_0_scan_files(task_id, local_path, db)
-            
+
             if not step0_result["success"]:
                 logger.error(f"步骤0失败: {step0_result['message']}")
                 # 更新任务状态为失败
@@ -902,7 +884,7 @@ async def run_task(task_id: int,external_file_path: str):
                     task_obj.end_time = datetime.now()
                     db.commit()
                 return {"status": "error", "message": f"步骤0失败: {step0_result['message']}"}
-            
+
             # 更新任务统计信息
             if task_obj:
                 task_obj.total_files = step0_result.get("total_files", 0)
@@ -910,13 +892,13 @@ async def run_task(task_id: int,external_file_path: str):
                 task_obj.failed_files = step0_result.get("failed_files", 0)
                 task_obj.code_lines = step0_result.get("total_code_lines", 0)
                 db.commit()
-            
+
             logger.info(f"步骤0完成: {step0_result['message']}")
-            
+
             # 步骤1: 知识库创建
             logger.info("=== 开始执行步骤1: 知识库创建 ===")
             step1_result = await execute_step_1_create_knowledge_base(task_id, local_path, repo_info)
-            
+
             if not step1_result["success"]:
                 logger.error(f"步骤1失败: {step1_result['message']}")
                 if task_obj:
@@ -924,19 +906,19 @@ async def run_task(task_id: int,external_file_path: str):
                     task_obj.end_time = datetime.now()
                     db.commit()
                 return {"status": "error", "message": f"步骤1失败: {step1_result['message']}"}
-            
+
             vectorstore_index = step1_result.get("vectorstore_index")
-            
+
             # 更新任务索引
             if task_obj and vectorstore_index:
                 task_obj.task_index = vectorstore_index
                 db.commit()
-            
+
             logger.info(f"步骤1完成: {step1_result['message']}")
-            
+
             # 步骤2: 分析数据模型
             logger.info("=== 开始执行步骤2: 分析数据模型 ===")
-            
+
             if not vectorstore_index:
                 logger.error("缺少向量索引，无法执行数据模型分析")
                 if task_obj:
@@ -944,9 +926,9 @@ async def run_task(task_id: int,external_file_path: str):
                     task_obj.end_time = datetime.now()
                     db.commit()
                 return {"status": "error", "message": "缺少向量索引，无法执行数据模型分析"}
-            
+
             step2_result = await execute_step_2_analyze_data_model(task_id, vectorstore_index)
-            
+
             if not step2_result["success"]:
                 logger.error(f"步骤2失败: {step2_result['message']}")
                 if task_obj:
@@ -954,14 +936,14 @@ async def run_task(task_id: int,external_file_path: str):
                     task_obj.end_time = datetime.now()
                     db.commit()
                 return {"status": "error", "message": f"步骤2失败: {step2_result['message']}"}
-            
+
             logger.info(f"步骤2完成: {step2_result['message']}")
-            
+
             # 步骤3: 生成文档结构
             logger.info("=== 开始执行步骤3: 生成文档结构 ===")
 
             step3_result = await execute_step_3_generate_document_structure(task_id, external_file_path)
-            
+
             if not step3_result["success"]:
                 logger.error(f"步骤3失败: {step3_result['message']}")
                 if task_obj:
@@ -969,33 +951,33 @@ async def run_task(task_id: int,external_file_path: str):
                     task_obj.end_time = datetime.now()
                     db.commit()
                 return {"status": "error", "message": f"步骤3失败: {step3_result['message']}"}
-            
+
             logger.info(f"步骤3完成: {step3_result['message']}")
-            
+
             # ========== 所有步骤完成 ==========
-            
+
             # 更新任务状态为完成
             if task_obj:
                 task_obj.status = "completed"
                 task_obj.end_time = datetime.now()
                 task_obj.progress_percentage = 100
                 db.commit()
-            
+
             logger.info(f"任务 {task_id} 所有步骤执行完成")
-            
+
             return {
-                "status": "success", 
+                "status": "success",
                 "message": "任务执行完成",
                 "task_id": task_id,
                 "step0_result": step0_result,
                 "step1_result": step1_result,
                 "step2_result": step2_result,
-                "step3_result": step3_result
+                "step3_result": step3_result,
             }
-            
+
         except Exception as e:
             logger.error(f"运行任务 {task_id} 时发生错误: {str(e)}")
-            
+
             # 更新任务状态为失败
             try:
                 task_obj = db.query(AnalysisTask).filter(AnalysisTask.id == task_id).first()
@@ -1005,5 +987,5 @@ async def run_task(task_id: int,external_file_path: str):
                     db.commit()
             except Exception as update_error:
                 logger.error(f"更新任务状态失败: {str(update_error)}")
-            
+
             return {"status": "error", "message": f"任务执行失败: {str(e)}"}
