@@ -207,7 +207,7 @@ export const SUPPORTED_CODE_EXTENSIONS = new Set([
   ".sql", ".graphql", ".gql",
   
   // 其他
-  ".ipynb", ".proto", ".thrift", ".avro",
+  // ".ipynb", ".proto", ".thrift", ".avro",
 ]);
 
 /**
