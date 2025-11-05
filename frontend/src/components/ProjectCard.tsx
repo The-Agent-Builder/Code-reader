@@ -20,8 +20,7 @@ export default function ProjectCard({ repository }: ProjectCardProps) {
     const navigate = useNavigate();
 
     const handleClick = () => {
-        // 使用 full_name 作为路由参数跳转到详情页
-        navigate(`/result/${repository.full_name}`);
+        navigate(`/result/${repository.id}`);
     };
 
     const getStatusBadge = () => {

@@ -1,3 +1,4 @@
+import React from "react";
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import Layout from "../components/Layout";
 import HomePage from "../pages/HomePage";
@@ -60,7 +61,7 @@ export const router = createBrowserRouter([
         element: <ProfilePage />,
       },
       {
-        path: "chat",
+        path: "chat/:sessionId",
         element: <ChatPage />,
       },
     ],

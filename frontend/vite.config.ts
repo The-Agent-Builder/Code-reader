@@ -6,6 +6,41 @@ export default defineConfig(({ mode }) => {
   // 加载环境变量，从项目根目录加载
   const env = loadEnv(mode, path.resolve(__dirname, ".."), "");
 
+  // 根据不同模式配置不同的代理
+  const getProxyConfig = () => {
+    switch (mode) {
+      case 'dev1':
+        return {
+          '/api': {
+            target: 'http://localhost:8001',
+            changeOrigin: true,
+            rewrite: (path: string) => path.replace(/^\/api/, '')
+          }
+        };
+      case 'dev2':
+        return {
+          '/api': {
+            target: 'http://localhost:8002',
+            changeOrigin: true,
+            rewrite: (path: string) => path.replace(/^\/api/, '')
+          }
+        };
+      default: // dev 模式
+        return {
+          '/api': {
+            target: 'http://localhost:8000',
+            changeOrigin: true,
+            rewrite: (path: string) => path.replace(/^\/api/, '')
+          },
+          '/code_chat/api': {
+            target: 'http://localhost:8003',
+            changeOrigin: true,
+            rewrite: (path: string) => path.replace(/^\/code_chat\/api/, '')
+          }
+        };
+    }
+  };
+
   return {
     plugins: [react()],
     optimizeDeps: {
@@ -72,6 +107,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: parseInt(env.VITE_PORT) || 3000,
       open: true,
+      proxy: getProxyConfig(),
     },
   };
 });

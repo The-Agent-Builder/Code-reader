@@ -12,17 +12,16 @@ services:
       - APP_HOST=0.0.0.0
       - APP_PORT=8000
       
-      # 数据库配置 (请根据实际情况修改)
-      - DB_DIALECT=mysql+pymysql
-      - DB_HOST=192.168.3.14
-      - DB_PORT=3306
-      - DB_NAME=code_reader
-      - DB_USER=root
-      - DB_PASSWORD=xxx
-      - DB_PARAMS=charset=utf8mb4
-      - DB_ECHO=0
-      - DB_POOL_SIZE=5
-      - DB_MAX_OVERFLOW=10
+      - DB_DIALECT=mysql+pymysql      # 指定 SQLAlchemy 使用的数据库“方言+驱动”
+      - DB_HOST=10.0.1.100               # 数据库服务器地址
+      - DB_PORT=50011                  # 数据库服务器端口
+      - DB_NAME=code_reader         # 数据库名称
+      - DB_USER=root                  # 数据库用户名
+      - DB_PASSWORD=Sdai@202109ikjusdf     # 数据库密码
+      - DB_PARAMS=charset=utf8mb4     # 数据库连接参数
+      - DB_ECHO=0                     # 开启 SQLAlchemy echo
+      - DB_POOL_SIZE=5                # 连接池大小
+      - DB_MAX_OVERFLOW=10            # 超出连接池的额外连接数
       
       # API 配置 (请根据实际情况修改)
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}

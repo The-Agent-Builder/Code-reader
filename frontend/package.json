@@ -65,6 +65,8 @@
   },
   "scripts": {
     "dev": "vite",
+    "dev1": "vite --mode dev1",
+    "dev2": "vite --mode dev2",
     "build": "vite build"
   }
 }

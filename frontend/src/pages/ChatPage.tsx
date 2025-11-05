@@ -1,4 +1,5 @@
-import { useNavigate, useOutletContext } from "react-router-dom";
+import React from "react";
+import { useNavigate, useOutletContext, useParams } from "react-router-dom";
 import ChatInterface from "../components/ChatInterface";
 import { useProject } from "../contexts/ProjectContext";
 
@@ -8,6 +9,7 @@ interface OutletContext {
 
 export default function ChatPage() {
   const navigate = useNavigate();
+  const { sessionId } = useParams<{ sessionId: string }>();
   const { currentVersionId } = useOutletContext<OutletContext>();
   const { getProjectUrl } = useProject();
 
@@ -16,6 +18,10 @@ export default function ChatPage() {
   };
 
   return (
-    <ChatInterface onBack={handleBack} currentVersionId={currentVersionId} />
+    <ChatInterface 
+      onBack={handleBack} 
+      currentVersionId={currentVersionId}
+      sessionId={sessionId || "default"} 
+    />
   );
 }
