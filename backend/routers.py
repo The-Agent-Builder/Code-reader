@@ -308,50 +308,6 @@ async def get_repository_by_name_or_full_name(
             return JSONResponse(status_code=404, content=result)
 
         return JSONResponse(status_code=200, content=result)
-     JSON响应包含仓库信息
-
-    Note:
-        name 和 full_name 至少需要提供一个参数
-    """
-    try:
-        # 验证参数
-        if not name and not full_name:
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "status": "error",
-                    "message": "请提供 name 或 full_name 参数进行查询",
-                },
-            )
-
-        # 根据提供的参数进行查询
-        if name and full_name:
-            # 如果同时提供了两个参数，优先使用 full_name
-            result = RepositoryService.get_repository_by_name_or_full_name(
-                name=None, full_name=full_name, db=db, include_tasks=False
-            )
-            search_field = "full_name"
-            search_value = full_name
-        elif full_name:
-            result = RepositoryService.get_repository_by_name_or_full_name(
-                name=None, full_name=full_name, db=db, include_tasks=False
-            )
-            search_field = "full_name"
-            search_value = full_name
-        else:
-            result = RepositoryService.get_repository_by_name_or_full_name(
-                name=name, full_name=None, db=db, include_tasks=False
-            )
-            search_field = "name"
-            search_value = name
-
-        if result["status"] == "error":
-            return JSONResponse(status_code=500, content=result)
-
-        if not result.get("repository"):
-            return JSONResponse(status_code=404, content=result)
-
-        return JSONResponse(status_code=200, content=result)
 
     except Exception as e:
         return JSONResponse(
