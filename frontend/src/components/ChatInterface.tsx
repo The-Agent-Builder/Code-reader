@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Textarea } from "./ui/textarea";
@@ -21,7 +21,12 @@ import {
   Copy,
   Check,
   ArrowUp,
+  Wrench,
 } from "lucide-react";
+import { chatApi } from "../services/chat-api";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
 
 interface ChatMessage {
   id: string;
@@ -29,11 +34,16 @@ interface ChatMessage {
   content: string;
   timestamp: Date;
   isTyping?: boolean;
+  toolUse?: {
+    toolName: string;
+    toolInput: any;
+  };
 }
 
 interface ChatInterfaceProps {
   onBack: () => void;
   currentVersionId: string;
+  sessionId: string;
 }
 
 const suggestedQuestions = [
@@ -195,165 +205,133 @@ npm run dev
 确保Node.js版本 >= 16，推荐使用最新的LTS版本。`,
 ];
 
-// 格式化消息内容，支持Markdown风格的基本格式
-const formatMessageContent = (content: string) => {
-  const lines = content.split("\n");
-  const formattedLines = lines.map((line, index) => {
-    // 代码块处理
-    if (line.trim().startsWith("```")) {
-      return { type: "code-fence", content: line, key: index };
-    }
-
-    // 标题处理
-    if (line.startsWith("**") && line.endsWith("**") && line.length > 4) {
-      return {
-        type: "heading",
-        content: line.slice(2, -2),
-        key: index,
-      };
-    }
-
-    // 列表项处理
-    if (line.trim().startsWith("•") || line.trim().startsWith("-")) {
-      return {
-        type: "list-item",
-        content: line.trim().slice(1).trim(),
-        key: index,
-      };
-    }
-
-    // 代码行处理
-    if (
-      line.trim().startsWith("`") &&
-      line.trim().endsWith("`") &&
-      line.trim().length > 2
-    ) {
-      return {
-        type: "inline-code",
-        content: line.trim().slice(1, -1),
-        key: index,
-      };
-    }
-
-    // 普通文本
-    return { type: "text", content: line, key: index };
-  });
-
-  return formattedLines;
-};
-
-// 渲染格式化的消息内容
+// Markdown 渲染组件
 const MessageContent = ({ content }: { content: string }) => {
-  const formattedLines = formatMessageContent(content);
-  let inCodeBlock = false;
-  let codeBlockContent: string[] = [];
-  let codeBlockLanguage = "";
-
-  const elements: JSX.Element[] = [];
-
-  formattedLines.forEach((line, index) => {
-    if (line.type === "code-fence") {
-      if (!inCodeBlock) {
-        // 开始代码块
-        inCodeBlock = true;
-        codeBlockLanguage = line.content.replace("```", "").trim();
-        codeBlockContent = [];
-      } else {
-        // 结束代码块
-        inCodeBlock = false;
-        elements.push(
-          <div key={`code-block-${index}`} className="my-3">
-            <div className="bg-gray-900 rounded-lg overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-2 bg-gray-800 text-gray-300 text-sm">
-                <span className="flex items-center space-x-2">
-                  <Code className="h-4 w-4" />
-                  <span>{codeBlockLanguage || "code"}</span>
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0 text-gray-400 hover:text-white"
-                  onClick={() =>
-                    navigator.clipboard.writeText(codeBlockContent.join("\n"))
-                  }
-                >
-                  <Copy className="h-3 w-3" />
-                </Button>
+  return (
+    <div className="prose prose-sm max-w-none">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeRaw]}
+        components={{
+          // @ts-ignore - 自定义样式组件
+          h1: ({ node, ...props }) => (
+            <h1 className="text-xl font-bold text-gray-900 mt-4 mb-2" {...props} />
+          ),
+          // @ts-ignore
+          h2: ({ node, ...props }) => (
+            <h2 className="text-lg font-bold text-gray-900 mt-3 mb-2" {...props} />
+          ),
+          // @ts-ignore
+          h3: ({ node, ...props }) => (
+            <h3 className="text-base font-semibold text-gray-900 mt-3 mb-2" {...props} />
+          ),
+          // @ts-ignore
+          h4: ({ node, ...props }) => (
+            <h4 className="text-sm font-semibold text-gray-900 mt-2 mb-1" {...props} />
+          ),
+          // @ts-ignore
+          p: ({ node, ...props }) => (
+            <p className="text-gray-700 leading-relaxed my-2" {...props} />
+          ),
+          // @ts-ignore
+          ul: ({ node, ...props }) => (
+            <ul className="list-disc list-inside space-y-1 my-2 text-gray-700" {...props} />
+          ),
+          // @ts-ignore
+          ol: ({ node, ...props }) => (
+            <ol className="list-decimal list-inside space-y-1 my-2 text-gray-700" {...props} />
+          ),
+          // @ts-ignore
+          li: ({ node, ...props }) => (
+            <li className="text-gray-700" {...props} />
+          ),
+          // @ts-ignore
+          code: ({ node, inline, className, children, ...props }: any) => {
+            const match = /language-(\w+)/.exec(className || "");
+            return !inline ? (
+              <div className="my-3 rounded-lg overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2 bg-gray-800 text-gray-300 text-sm">
+                  <span className="flex items-center space-x-2">
+                    <Code className="h-4 w-4" />
+                    <span>{match ? match[1] : "code"}</span>
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0 text-gray-400 hover:text-white"
+                    onClick={() => navigator.clipboard.writeText(String(children))}
+                  >
+                    <Copy className="h-3 w-3" />
+                  </Button>
+                </div>
+                <code className={`${className} block p-4 text-sm bg-gray-900 text-gray-100 overflow-x-auto`} {...props}>
+                  {children}
+                </code>
               </div>
-              <pre className="p-4 text-sm text-gray-100 overflow-x-auto">
-                <code>{codeBlockContent.join("\n")}</code>
-              </pre>
+            ) : (
+              <code className="bg-gray-100 text-gray-800 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
+                {children}
+              </code>
+            );
+          },
+          // @ts-ignore
+          pre: ({ node, ...props }) => (
+            <pre className="my-0" {...props} />
+          ),
+          // @ts-ignore
+          blockquote: ({ node, ...props }) => (
+            <blockquote className="border-l-4 border-blue-500 pl-4 py-2 my-3 text-gray-700 italic bg-blue-50" {...props} />
+          ),
+          // @ts-ignore
+          a: ({ node, ...props }) => (
+            <a className="text-blue-600 hover:text-blue-800 underline" {...props} />
+          ),
+          // @ts-ignore
+          table: ({ node, ...props }) => (
+            <div className="overflow-x-auto my-3">
+              <table className="min-w-full divide-y divide-gray-300 border border-gray-300" {...props} />
             </div>
-          </div>
-        );
-      }
-      return;
-    }
-
-    if (inCodeBlock) {
-      codeBlockContent.push(line.content);
-      return;
-    }
-
-    switch (line.type) {
-      case "heading":
-        elements.push(
-          <h4
-            key={line.key}
-            className="font-semibold text-gray-900 mt-4 mb-2 first:mt-0"
-          >
-            {line.content}
-          </h4>
-        );
-        break;
-
-      case "list-item":
-        elements.push(
-          <div key={line.key} className="flex items-start space-x-2 ml-4 my-1">
-            <span className="text-blue-600 mt-1">•</span>
-            <span className="text-gray-700">{line.content}</span>
-          </div>
-        );
-        break;
-
-      case "inline-code":
-        elements.push(
-          <div key={line.key} className="my-2">
-            <code className="bg-gray-100 text-gray-800 px-2 py-1 rounded text-sm font-mono">
-              {line.content}
-            </code>
-          </div>
-        );
-        break;
-
-      case "text":
-        if (line.content.trim()) {
-          elements.push(
-            <p
-              key={line.key}
-              className="text-gray-700 leading-relaxed my-2 first:mt-0 last:mb-0"
-            >
-              {line.content}
-            </p>
-          );
-        } else {
-          elements.push(<div key={line.key} className="h-2" />);
-        }
-        break;
-    }
-  });
-
-  return <div className="space-y-1">{elements}</div>;
+          ),
+          // @ts-ignore
+          thead: ({ node, ...props }) => (
+            <thead className="bg-gray-50" {...props} />
+          ),
+          // @ts-ignore
+          th: ({ node, ...props }) => (
+            <th className="px-3 py-2 text-left text-sm font-semibold text-gray-900 border border-gray-300" {...props} />
+          ),
+          // @ts-ignore
+          td: ({ node, ...props }) => (
+            <td className="px-3 py-2 text-sm text-gray-700 border border-gray-300" {...props} />
+          ),
+          // @ts-ignore
+          strong: ({ node, ...props }) => (
+            <strong className="font-semibold text-gray-900" {...props} />
+          ),
+          // @ts-ignore
+          em: ({ node, ...props }) => (
+            <em className="italic text-gray-800" {...props} />
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
 };
 
 export default function ChatInterface({
   onBack,
   currentVersionId,
+  sessionId,
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [conversationId, setConversationId] = useState<string>(
+    () => crypto.randomUUID()
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -379,19 +357,107 @@ export default function ChatInterface({
     setInputValue("");
     setIsLoading(true);
 
-    // 模拟AI响应延迟
-    setTimeout(() => {
-      const assistantMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content:
-          mockResponses[Math.floor(Math.random() * mockResponses.length)],
-        timestamp: new Date(),
-      };
+    // 创建AI响应消息（初始为空）
+    const assistantMessageId = (Date.now() + 1).toString();
+    const assistantMessage: ChatMessage = {
+      id: assistantMessageId,
+      role: "assistant",
+      content: "",
+      timestamp: new Date(),
+    };
 
-      setMessages((prev) => [...prev, assistantMessage]);
+    // setMessages((prev) => [...prev, assistantMessage]);
+
+    try {
+      // 使用从URL传递的sessionId
+      console.log("使用sessionId:", sessionId);
+      
+      // 调用真实的API
+      await chatApi.sendMessage(
+        sessionId,  
+        content.trim(),
+        conversationId,
+        (event: string, data: any) => {
+          console.log("event", event);
+          // 处理不同的SSE事件
+          switch (event) {
+              case "text_delta":
+                console.log("text_delta-event", data);
+                if (data && data.delta) {
+                  console.log("data", data);
+                  const newMessage: ChatMessage = {
+                    id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                    role: "assistant",
+                    content: data.delta,
+                    timestamp: new Date(),
+                  };
+                  setMessages((prev) => [...prev, newMessage]);
+                }
+                break;
+
+            case "tool_use":
+              // 工具使用事件
+              if (data && data.tool_name) {
+                console.log("工具调用:", data);
+                const toolMessage: ChatMessage = {
+                  id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                  role: "assistant",
+                  content: "",
+                  timestamp: new Date(),
+                  toolUse: {
+                    toolName: data.tool_name,
+                    toolInput: data.tool_input,
+                  },
+                };
+                setMessages((prev) => [...prev, toolMessage]);
+              }
+              break;
+
+            case "done":
+              // 消息发送完成
+              console.log("消息发送完成", data);
+              break;
+              
+
+            case "error":
+              // 错误处理
+              console.error("聊天错误:", data);
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantMessageId
+                    ? {
+                        ...msg,
+                        content:
+                          msg.content ||
+                          `抱歉，发生了错误：${data.message || "未知错误"}`,
+                      }
+                    : msg
+                )
+              );
+              break;
+
+            default:
+              console.log("未处理的事件:", event, data);
+          }
+        }
+      );
+    } catch (error) {
+      console.error("发送消息失败:", error);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMessageId
+            ? {
+                ...msg,
+                content:
+                  msg.content ||
+                  `抱歉，发送消息失败：${error instanceof Error ? error.message : "网络错误"}`,
+              }
+            : msg
+        )
+      );
+    } finally {
       setIsLoading(false);
-    }, 1000 + Math.random() * 2000);
+    }
   };
 
   const handleSuggestedQuestion = (question: string) => {
@@ -536,12 +602,38 @@ export default function ChatInterface({
                               className={`inline-block p-4 rounded-xl relative shadow-sm ${
                                 message.role === "user"
                                   ? "bg-blue-600 text-white rounded-br-md"
+                                  : message.toolUse
+                                  ? "bg-amber-50 border border-amber-200 text-gray-900 rounded-bl-md"
                                   : "bg-white border border-gray-200 text-gray-900 rounded-bl-md"
                               }`}
                             >
                               {message.role === "user" ? (
                                 <div className="whitespace-pre-wrap text-sm leading-relaxed">
                                   {message.content}
+                                </div>
+                              ) : message.toolUse ? (
+                                /* 工具调用显示 */
+                                <div className="space-y-2">
+                                  <div className="flex items-center space-x-2 text-amber-700">
+                                    <Wrench className="h-4 w-4" />
+                                    <span className="font-semibold text-sm">
+                                      调用工具: {message.toolUse.toolName}
+                                    </span>
+                                  </div>
+                                  {message.toolUse.toolInput && (
+                                    <div className="mt-2 p-3 bg-white rounded-lg border border-amber-200">
+                                      <div className="text-xs font-medium text-gray-600 mb-1">
+                                        参数:
+                                      </div>
+                                      <pre className="text-xs text-gray-700 overflow-x-auto whitespace-pre-wrap">
+                                        {JSON.stringify(
+                                          message.toolUse.toolInput,
+                                          null,
+                                          2
+                                        )}
+                                      </pre>
+                                    </div>
+                                  )}
                                 </div>
                               ) : (
                                 <MessageContent content={message.content} />

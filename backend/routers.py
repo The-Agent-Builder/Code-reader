@@ -2004,6 +2004,8 @@ async def compress_and_upload_folder(
             Settings.README_API_BASE_URL
         )
 
+
+
         # 清理临时文件
         try:
             os.unlink(zip_path)

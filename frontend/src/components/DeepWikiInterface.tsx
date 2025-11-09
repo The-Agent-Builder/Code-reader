@@ -172,8 +172,8 @@ export default function DeepWikiInterface({
         try {
             // 1. 通过full_name获取仓库信息
             console.log("Loading repository data for full_name:", fullNameHash);
-            const repoResponse = await api.getRepositoryByFullName(
-                fullNameHash
+            const repoResponse = await api.getRepositoryById(
+                Number(fullNameHash)
             );
             console.log("Repository API response:", repoResponse);
 

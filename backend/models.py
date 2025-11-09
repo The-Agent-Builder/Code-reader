@@ -157,6 +157,7 @@ class Repository(Base):
     full_name = Column(String(255), comment="完整仓库名")
     local_path = Column(String(1024), nullable=False, comment="本地仓库路径")
     status = Column(Integer, default=1, comment="状态：1=存在，0=已删除")
+    claude_session_id = Column(String(255), comment="Claude会话ID")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), comment="创建时间")
     updated_at = Column(
         DateTime,
@@ -179,6 +180,7 @@ class Repository(Base):
             "full_name": self.full_name,
             "local_path": self.local_path,
             "status": self.status,
+            "claude_session_id": self.claude_session_id,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

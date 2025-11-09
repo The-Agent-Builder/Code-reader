@@ -59,6 +59,7 @@ class Settings:
 
     # README API 配置
     README_API_BASE_URL: str = os.getenv("README_API_BASE_URL", "http://127.0.0.1:8001")
+    CLAUDE_CHAT_API_BASE_URL: str = os.getenv("CLAUDE_CHAT_API_BASE_URL", "http://127.0.0.1:8002")
 
     # 本地存储配置
     LOCAL_REPO_PATH: str = os.getenv("LOCAL_REPO_PATH", "./data/repos")

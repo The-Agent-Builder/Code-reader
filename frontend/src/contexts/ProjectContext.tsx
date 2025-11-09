@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from "react";
+import React, { createContext, useContext, useState, ReactNode } from "react";
 import { api } from "../services/api";
 
 interface RepositoryInfo {
@@ -10,6 +10,7 @@ interface RepositoryInfo {
     language: string;
     created_at: string;
     updated_at: string;
+    claude_session_id?: string;
 }
 
 interface ProjectContextType {

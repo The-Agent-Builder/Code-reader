@@ -1134,6 +1134,7 @@ class RepositoryService:
                 full_name=repository_data.get("full_name"),
                 local_path=repository_data["local_path"],
                 status=repository_data.get("status", 1),
+                claude_session_id=repository_data.get("claude_session_id"),
                 created_at=current_time,
                 updated_at=current_time,
             )

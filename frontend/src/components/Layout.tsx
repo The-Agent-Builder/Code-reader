@@ -87,7 +87,7 @@ export default function Layout() {
       return "background";
     } else if (path === "/profile") {
       return "profile";
-    } else if (path === "/chat") {
+    } else if (path.startsWith("/chat/")) {
       return "chat";
     } else {
       return "home";
@@ -118,7 +118,9 @@ export default function Layout() {
         navigate("/profile");
         break;
       case "chat":
-        navigate("/chat");
+        // 如果有claude_session_id，使用它；否则使用项目名称作为后备
+        const sessionId = currentRepository?.claude_session_id || projectName || "default";
+        navigate(`/chat/${sessionId}`);
         break;
       default:
         navigate("/home");

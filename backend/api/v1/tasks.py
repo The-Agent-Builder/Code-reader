@@ -66,8 +66,9 @@ async def create_task_from_zip(
         task_uuid = str(uuid.uuid4())
         task_id_string = f"task_{task_uuid}"
         
-        # 初始化 external_file_path
+        # 初始化 external_file_path 和 claude_session_id
         external_file_path = None
+        claude_session_id = None
         
         # 创建临时目录处理zip文件
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -77,7 +78,7 @@ async def create_task_from_zip(
                 content = await zip_file.read()
                 buffer.write(content)
             
-            # 上传zip文件到外部系统
+            # 上传zip文件到README外部系统
             readme_api_base_url = os.getenv("README_API_BASE_URL")
             if readme_api_base_url:
                 try:
@@ -94,17 +95,46 @@ async def create_task_from_zip(
                             upload_result = response.json()
                             if upload_result.get("success"):
                                 external_file_path = upload_result.get("file_path")
-                                print(f"外部系统上传成功，file_path: {external_file_path}")
-                                logger.info(f"ZIP文件已成功上传到外部系统: {external_file_path}")
+                                print(f"README系统上传成功，file_path: {external_file_path}")
+                                logger.info(f"ZIP文件已成功上传到README系统: {external_file_path}")
                             else:
-                                logger.warning(f"外部系统上传失败: {upload_result.get('message', '未知错误')}")
+                                logger.warning(f"README系统上传失败: {upload_result.get('message', '未知错误')}")
                         else:
-                            logger.warning(f"外部系统上传请求失败，状态码: {response.status_code}")
+                            logger.warning(f"README系统上传请求失败，状态码: {response.status_code}")
                             
                 except Exception as e:
-                    logger.error(f"上传到外部系统时发生错误: {str(e)}")
+                    logger.error(f"上传到README系统时发生错误: {str(e)}")
             else:
-                logger.info("未设置README_API_BASE_URL环境变量，跳过外部系统上传")
+                logger.info("未设置README_API_BASE_URL环境变量，跳过README系统上传")
+            
+            # 上传zip文件到Claude Chat系统
+            claude_chat_api_base_url = settings.CLAUDE_CHAT_API_BASE_URL
+            if claude_chat_api_base_url:
+                try:
+                    session_create_url = f"{claude_chat_api_base_url}/session/create"
+                    
+                    # 重新打开文件进行上传
+                    with open(zip_path, "rb") as f:
+                        files = {'file': (zip_file.filename, f, 'application/x-zip-compressed')}
+                        headers = {'accept': 'application/json'}
+                        
+                        response = requests.post(session_create_url, files=files, headers=headers)
+                        
+                        if response.status_code == 200 or response.status_code == 201:
+                            session_result = response.json()
+                            claude_session_id = session_result.get("session_id")
+                            if claude_session_id:
+                                print(f"Claude Chat系统上传成功，session_id: {claude_session_id}")
+                                logger.info(f"ZIP文件已成功上传到Claude Chat系统，session_id: {claude_session_id}")
+                            else:
+                                logger.warning(f"Claude Chat系统返回数据中未找到session_id: {session_result}")
+                        else:
+                            logger.warning(f"Claude Chat系统上传请求失败，状态码: {response.text}")
+                            
+                except Exception as e:
+                    logger.error(f"上传到Claude Chat系统时发生错误: {str(e)}")
+            else:
+                logger.info("未设置CLAUDE_CHAT_API_BASE_URL环境变量，跳过Claude Chat系统上传")
             
             # 解压缩文件到临时目录
             extract_dir = os.path.join(temp_dir, "extracted")
@@ -194,6 +224,7 @@ async def create_task_from_zip(
                 "name": clean_repo_name,
                 "full_name": clean_repo_name,
                 "local_path": relative_local_path,
+                "claude_session_id": claude_session_id if claude_session_id else task_uuid,  # 优先使用Claude Chat返回的session_id
                 "status": 1
             }
             
@@ -266,6 +297,7 @@ async def create_task_from_zip(
                     "local_path": str(repo_path),
                     "relative_path": relative_local_path,
                     "md5_directory_name": md5_directory_name,
+                    "claude_session_id": claude_session_id,  # 添加Claude Chat session_id
                     "upload_summary": {
                         "total_files": total_files,
                         "total_size_bytes": total_size,

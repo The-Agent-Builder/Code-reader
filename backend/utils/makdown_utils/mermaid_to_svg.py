@@ -96,9 +96,9 @@ class MermaidToSvgConverter:
                 '-i', input_file, 
                 '-o', output_file, 
                 '-b', 'transparent',
-                '-w', '2048',      # 设置宽度为2048px
-                '-H', '2048',      # 设置高度为2048px  
-                '-s', '2',         # 缩放因子为2，提高清晰度
+                '-w', '20480',      # 设置宽度为2048px
+                '-H', '20480',      # 设置高度为2048px  
+                '-s', '3',         # 缩放因子为2，提高清晰度
                 '--cssFile', '/dev/null'  # 不使用额外CSS文件
             ]
             

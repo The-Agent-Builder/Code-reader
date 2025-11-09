@@ -117,7 +117,11 @@ RUN npm install -g @mermaid-js/mermaid-cli
 
 # 安装 Chrome Headless Shell（用于 mermaid 渲染）
 RUN npx puppeteer browsers install chrome-headless-shell
-
+RUN apt-get update && apt-get install -y \
+    fonts-noto-cjk \
+    fonts-wqy-zenhei \
+    vim \
+ && rm -rf /var/lib/apt/lists/*  
 # 创建 Puppeteer 配置文件，允许在 root 下运行，并设置更大的viewport
 RUN echo '{\
   "args": [\
